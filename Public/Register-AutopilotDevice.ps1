@@ -11,12 +11,14 @@
     UPN of the user to pre-assign to this device.
 .PARAMETER WaitForSync
     Polls Microsoft Graph with exponential backoff until the device profile is assigned.
-.PARAMETER MaxWaitMinutes
-    Maximum wait time for -WaitForSync before breaking out asynchronously. Default: 10 minutes.
+.PARAMETER TimeoutMinutes
+    Maximum wait time for -WaitForSync before breaking out asynchronously. Default: 45 minutes.
+.PARAMETER Reboot
+    Automatically reboots the machine upon successful profile assignment to trigger Autopilot OOBE.
 .PARAMETER FallbackToUsb
     Automatically export to USB if network or authentication fails.
 .EXAMPLE
-    Register-AutopilotDevice -GroupTag "DevOps-Laptops" -WaitForSync
+    Register-AutopilotDevice -GroupTag "DevOps-Laptops" -WaitForSync -Reboot
 #>
 function Register-AutopilotDevice {
     [CmdletBinding()]
@@ -32,7 +34,10 @@ function Register-AutopilotDevice {
         [switch]$WaitForSync,
 
         [Parameter()]
-        [int]$MaxWaitMinutes = 10,
+        [int]$TimeoutMinutes = 45,
+
+        [Parameter()]
+        [switch]$Reboot,
 
         [Parameter()]
         [switch]$FallbackToUsb = $true
@@ -119,12 +124,12 @@ function Register-AutopilotDevice {
 
     # 5. Exponential Backoff Polling for Profile Assignment (Prevents Graph 429 Throttling)
     if ($WaitForSync -and $importId) {
-        Write-Host "  [+] Polling Microsoft Intune for profile assignment (Backoff schedule: 15s -> 30s -> 60s)..." -ForegroundColor Cyan
+        Write-Host "  [+] Polling Microsoft Intune for profile assignment (Max wait: $TimeoutMinutes mins)..." -ForegroundColor Cyan
         $checkUri = "https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/$importId"
         $startTime = [datetime]::UtcNow
         $pollIntervalSec = 15
 
-        while (([datetime]::UtcNow - $startTime).TotalMinutes -lt $MaxWaitMinutes) {
+        while (([datetime]::UtcNow - $startTime).TotalMinutes -lt $TimeoutMinutes) {
             Start-Sleep -Seconds $pollIntervalSec
 
             try {
@@ -132,11 +137,17 @@ function Register-AutopilotDevice {
                 $state = $statusRes.state.deviceImportStatus
 
                 if ($state -eq 'complete') {
-                    Write-Host "  [OK] Device sync complete and assigned to Autopilot profile!" -ForegroundColor Green
+                    Write-Host "`n  [OK] Device sync complete and assigned to Autopilot profile!" -ForegroundColor Green
+                    if ($Reboot) {
+                        Write-Host "  [+] Rebooting device to start corporate Autopilot OOBE..." -ForegroundColor Cyan
+                        Restart-Computer -Force
+                    } else {
+                        Write-Host "  [INFO] Please reboot the device now to begin corporate Autopilot provisioning." -ForegroundColor Yellow
+                    }
                     return $statusRes
                 }
                 elseif ($state -eq 'error') {
-                    Write-Host ("  [FAIL] Import error: " + $statusRes.state.deviceErrorCode + " - " + $statusRes.state.deviceErrorName) -ForegroundColor Red
+                    Write-Host ("`n  [FAIL] Import error: " + $statusRes.state.deviceErrorCode + " - " + $statusRes.state.deviceErrorName) -ForegroundColor Red
                     return $statusRes
                 }
             } catch { }
@@ -146,7 +157,10 @@ function Register-AutopilotDevice {
         }
 
         Write-Host "`n  [INFO] Entra ID dynamic group assignment is processing in background." -ForegroundColor Yellow
-        Write-Host "  [OK] Device identity uploaded. You may safely proceed with OOBE." -ForegroundColor Green
+        if ($FallbackToUsb) {
+            Write-Host "  [+] Saving backup CSV to USB drive..." -ForegroundColor Yellow
+            Export-AutopilotCsv -AutoDetectUsb -GroupTag $GroupTag -AssignedUser $AssignedUser | Out-Null
+        }
     }
 
     return $importResult
