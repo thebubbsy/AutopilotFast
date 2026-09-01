@@ -3,7 +3,8 @@
     Extracts the genuine Windows Autopilot 4K-8K hardware hash and device telemetry.
 .DESCRIPTION
     Queries the official MDM WMI provider (root/cimv2/mdm/dmmap:MDM_DevDetail_Ext01) for the
-    complete hardware hash. Includes automatic dmwappushservice recovery and a 10-attempt backoff loop.
+    complete hardware hash. Supports manual hash override (-ManualHash) for VMs and lab testing,
+    automatic dmwappushservice recovery, and a 10-attempt backoff loop.
 #>
 function Get-AutopilotHash {
     [CmdletBinding()]
@@ -13,6 +14,9 @@ function Get-AutopilotHash {
 
         [Parameter()]
         [string]$AssignedUser = '',
+
+        [Parameter()]
+        [string]$ManualHash = '',
 
         [Parameter()]
         [ValidateSet('Object', 'Csv', 'Json')]
@@ -30,9 +34,9 @@ function Get-AutopilotHash {
     $uuid = ''
     $model = ''
     $manufacturer = ''
-    $hardwareHash = ''
+    $hardwareHash = $ManualHash
     $pkid = ''
-    $statusMessage = 'Captured'
+    $statusMessage = if ($ManualHash) { 'ManualOverride' } else { 'Captured' }
 
     # 1. Ensure dmwappushservice is enabled and running
     try {
@@ -74,28 +78,33 @@ function Get-AutopilotHash {
         $pkid = (Get-ItemProperty -Path $regKey -Name ProductId -ErrorAction SilentlyContinue).ProductId
     } catch { }
 
-    # 4. Retrieve Hardware Hash with 10-Attempt Backoff Loop
-    $maxAttempts = 10
-    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        try {
-            $devDetail = Get-CimInstance -Namespace 'root/cimv2/mdm/dmmap' -ClassName 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext01' AND ParentID='./DevDetail'" -ErrorAction Stop
-            $hardwareHash = $devDetail.DeviceHardwareData
-            if ($hardwareHash) { break }
-        }
-        catch {
+    # 4. Retrieve Hardware Hash with 10-Attempt Backoff Loop (if not manual)
+    if (-not $hardwareHash) {
+        $maxAttempts = 10
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             try {
-                $devDetailWmi = Get-WmiObject -Namespace 'root/cimv2/mdm/dmmap' -Class 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext01' AND ParentID='./DevDetail'" -ErrorAction Stop
-                $hardwareHash = $devDetailWmi.DeviceHardwareData
+                $devDetail = Get-CimInstance -Namespace 'root/cimv2/mdm/dmmap' -ClassName 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext01' AND ParentID='./DevDetail'" -ErrorAction Stop
+                $hardwareHash = $devDetail.DeviceHardwareData
                 if ($hardwareHash) { break }
             }
             catch {
-                if ($attempt -lt $maxAttempts) {
-                    Start-Sleep -Seconds 5
-                } else {
-                    if (-not $isAdmin) {
-                        $statusMessage = "AccessDenied (Administrator privileges required to query MDM WMI provider)"
+                try {
+                    $devDetailWmi = Get-WmiObject -Namespace 'root/cimv2/mdm/dmmap' -Class 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext01' AND ParentID='./DevDetail'" -ErrorAction Stop
+                    $hardwareHash = $devDetailWmi.DeviceHardwareData
+                    if ($hardwareHash) { break }
+                }
+                catch {
+                    if ($attempt -lt $maxAttempts) {
+                        Start-Sleep -Seconds 5
                     } else {
-                        $statusMessage = "MDM_Provider_Uninitialized (MDM stack not yet initialized after $maxAttempts attempts: $($_.Exception.Message))"
+                        $isVm = ($model -match 'Virtual|VMware|Hyper-V|KVM|QEMU' -or $manufacturer -match 'Microsoft Corporation|VMware|QEMU')
+                        if ($isVm) {
+                            $statusMessage = "VirtualMachine_NonOA3 (VM detected without OEM OA3 injection. Use -ManualHash or enable Virtual TPM 2.0 / Autopilot v2 Device Preparation)"
+                        } elseif (-not $isAdmin) {
+                            $statusMessage = "AccessDenied (Administrator privileges required to query MDM WMI provider)"
+                        } else {
+                            $statusMessage = "MDM_Provider_Uninitialized (MDM stack not yet initialized after $maxAttempts attempts: $($_.Exception.Message))"
+                        }
                     }
                 }
             }
