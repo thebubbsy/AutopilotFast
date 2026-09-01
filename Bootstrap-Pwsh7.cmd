@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================================
-:: AutopilotFast - OOBE PowerShell 7 Bootstrapper (ARM64 & x64 Resilient)
+:: AutopilotFast - OOBE Bootstrapper (Offline USB Priority + HTTPS Fallback)
 :: Run at Windows 11/10 OOBE via Shift + F10
 :: ============================================================================
 setlocal EnableDelayedExpansion
@@ -10,7 +10,7 @@ color 0B
 
 echo.
 echo  ================================================================
-echo    AUTOPILOTFAST - WINDOWS OOBE POWERSHELL 7 BOOTSTRAPPER
+echo    AUTOPILOTFAST - WINDOWS OOBE BOOTSTRAPPER (OFFLINE FIRST)
 echo  ================================================================
 echo.
 
@@ -26,37 +26,58 @@ set "ARCH=win-x64"
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ARCH=win-arm64"
 if /i "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "ARCH=win-arm64"
 
-echo  [+] Detected Architecture: %ARCH%
+echo  [+] Detected Hardware Architecture: %ARCH%
 
-:: 2. Pre-download MSI using curl.exe to handle GitHub HTTP 302 Redirects
+:: 2. Search for Local / USB Offline MSI Installer
+set "OFFLINE_MSI="
+for %%D in (D E F G H I J K C) do (
+    if exist "%%D:\PowerShell-7.4.5-%ARCH%.msi" (
+        set "OFFLINE_MSI=%%D:\PowerShell-7.4.5-%ARCH%.msi"
+        goto :InstallOffline
+    )
+    if exist "%%D:\AutopilotFast\PowerShell-7.4.5-%ARCH%.msi" (
+        set "OFFLINE_MSI=%%D:\AutopilotFast\PowerShell-7.4.5-%ARCH%.msi"
+        goto :InstallOffline
+    )
+)
+
+:DownloadOnline
+echo  [+] No offline MSI found on USB drives. Attempting HTTPS download...
 set "MSI_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/PowerShell-7.4.5-%ARCH%.msi"
 set "MSI_TARGET=%TEMP%\PowerShell-7.4.5-%ARCH%.msi"
 
-echo  [+] Downloading PowerShell 7.4 LTS (%ARCH%) over HTTPS...
-curl.exe -fSLo "%MSI_TARGET%" "%MSI_URL%"
+curl.exe -fSLo "%MSI_TARGET%" "%MSI_URL%" 2>nul
 
 if not exist "%MSI_TARGET%" (
-    echo  [FAIL] Download failed. Falling back to PowerShell WebClient...
-    powershell.exe -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('%MSI_URL%', '%MSI_TARGET%')"
+    echo  [!] Online download unavailable. Checking Windows PowerShell 5.1 fallback...
+    goto :PowerShell5Fallback
 )
 
-if not exist "%MSI_TARGET%" (
-    echo  [FAIL] Failed to retrieve PowerShell 7 installer package. Check network connection.
-    pause
-    exit /b 1
+set "OFFLINE_MSI=%MSI_TARGET%"
+
+:InstallOffline
+echo  [+] Installing PowerShell 7 from: "%OFFLINE_MSI%"...
+msiexec.exe /i "%OFFLINE_MSI%" /qn /norestart
+
+if exist "%PWSH_EXE%" (
+    echo  [OK] PowerShell 7 installation complete!
+    goto :Launch
 )
 
-:: 3. Execute Silent MSI Installation
-echo  [+] Installing PowerShell 7 silently...
-msiexec.exe /i "%MSI_TARGET%" /qn /norestart
-
-if not exist "%PWSH_EXE%" (
-    echo  [FAIL] PowerShell 7 installation did not complete as expected.
-    pause
-    exit /b 1
-)
-
-echo  [OK] PowerShell 7 installed successfully!
+:PowerShell5Fallback
+echo.
+echo  ================================================================
+echo  [!] Launching AutopilotFast via Windows PowerShell 5.1 Fallback...
+echo  ================================================================
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {
+    Write-Host 'Running in native Windows PowerShell 5.1 compatibility mode...' -ForegroundColor Yellow
+    if (Test-Path 'C:\src\AutopilotFast\AutopilotFast.psd1') {
+        Import-Module 'C:\src\AutopilotFast\AutopilotFast.psd1' -Force
+        Register-AutopilotDevice -FallbackToUsb
+    }
+}"
+pause
+exit /b 0
 
 :Launch
 echo.

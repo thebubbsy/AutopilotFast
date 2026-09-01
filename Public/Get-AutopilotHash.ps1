@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Extracts the genuine Windows Autopilot 4K-8K hardware hash and device telemetry.
+    Extracts and structurally validates the genuine Windows Autopilot 4K-8K hardware hash.
 .DESCRIPTION
     Queries the official MDM WMI provider (root/cimv2/mdm/dmmap:MDM_DevDetail_Ext01) for the
-    complete hardware hash. Supports validated manual hash override (-ManualHash) for VMs and lab testing,
-    automatic dmwappushservice recovery, and a 10-attempt backoff loop.
+    complete hardware hash. Supports structurally verified manual hash override (-ManualHash)
+    for lab testing, automatic dmwappushservice recovery, and a 10-attempt backoff loop.
 #>
 function Get-AutopilotHash {
     [CmdletBinding()]
@@ -30,17 +30,42 @@ function Get-AutopilotHash {
         $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     } catch { }
 
-    # Validate ManualHash format if provided
-    if ($ManualHash) {
-        $cleanHash = $ManualHash.Trim()
-        $isBase64 = ($cleanHash -match '^[A-Za-z0-9+/=]+$')
-        $isValidLength = ($cleanHash.Length -ge 500 -and $cleanHash.Length -le 16000)
-
-        if (-not $isBase64 -or -not $isValidLength) {
-            throw "Invalid ManualHash format. Autopilot 4K/8K hardware hashes must be valid Base64 strings between 500 and 16,000 characters (Received: $($cleanHash.Length) chars)."
+    # Structural Validation of Hardware Hash (Base64 + Binary Length + ASN.1 DER Header Check)
+    function Test-AutopilotHashStructure {
+        param([string]$HashString)
+        if ([string]::IsNullOrWhiteSpace($HashString)) { return $false }
+        
+        $clean = $HashString.Trim()
+        if ($clean -notmatch '^[A-Za-z0-9+/=]+$') {
+            throw "Hardware hash failed Base64 charset validation."
         }
-        $hardwareHash = $cleanHash
-        $statusMessage = 'ManualOverride (Validated)'
+
+        try {
+            $bytes = [Convert]::FromBase64String($clean)
+            $byteLen = $bytes.Length
+
+            # Valid OA3 / MDM Autopilot hashes are binary blobs between 1KB and 16KB
+            if ($byteLen -lt 1024 -or $byteLen -gt 16384) {
+                throw "Hardware hash decoded length ($byteLen bytes) is outside valid Autopilot 4K/8K specification (1024 - 16384 bytes)."
+            }
+
+            # Verify standard OA3 / ASN.1 DER sequence header (0x30 or device hardware descriptor tag)
+            $headerByte = $bytes[0]
+            if ($headerByte -ne 0x30 -and $headerByte -ne 0x01 -and $headerByte -ne 0x02) {
+                Write-Warning "Hardware hash header byte (0x$($headerByte.ToString('X2'))) does not match standard ASN.1 DER / OA3 descriptor structure."
+            }
+
+            return $true
+        }
+        catch {
+            throw "Autopilot hardware hash structural verification failed: $($_.Exception.Message)"
+        }
+    }
+
+    if ($ManualHash) {
+        Test-AutopilotHashStructure -HashString $ManualHash | Out-Null
+        $hardwareHash = $ManualHash.Trim()
+        $statusMessage = 'ManualOverride (Structurally Verified)'
     } else {
         $hardwareHash = ''
         $statusMessage = 'Captured'
@@ -98,14 +123,22 @@ function Get-AutopilotHash {
         for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             try {
                 $devDetail = Get-CimInstance -Namespace 'root/cimv2/mdm/dmmap' -ClassName 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext01' AND ParentID='./DevDetail'" -ErrorAction Stop
-                $hardwareHash = $devDetail.DeviceHardwareData
-                if ($hardwareHash) { break }
+                $rawHash = $devDetail.DeviceHardwareData
+                if ($rawHash) {
+                    Test-AutopilotHashStructure -HashString $rawHash | Out-Null
+                    $hardwareHash = $rawHash
+                    break
+                }
             }
             catch {
                 try {
                     $devDetailWmi = Get-WmiObject -Namespace 'root/cimv2/mdm/dmmap' -Class 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext01' AND ParentID='./DevDetail'" -ErrorAction Stop
-                    $hardwareHash = $devDetailWmi.DeviceHardwareData
-                    if ($hardwareHash) { break }
+                    $rawHash = $devDetailWmi.DeviceHardwareData
+                    if ($rawHash) {
+                        Test-AutopilotHashStructure -HashString $rawHash | Out-Null
+                        $hardwareHash = $rawHash
+                        break
+                    }
                 }
                 catch {
                     if ($attempt -lt $maxAttempts) {
@@ -113,7 +146,7 @@ function Get-AutopilotHash {
                     } else {
                         $isVm = ($model -match 'Virtual|VMware|Hyper-V|KVM|QEMU' -or $manufacturer -match 'Microsoft Corporation|VMware|QEMU')
                         if ($isVm) {
-                            $statusMessage = "VirtualMachine_NonOA3 (VM detected without OEM OA3 injection. Use -ManualHash or enable Virtual TPM 2.0 / Autopilot v2 Device Preparation)"
+                            $statusMessage = "VirtualMachine_NonOA3 (VM detected without OEM OA3 injection. Use Virtual TPM 2.0 or Autopilot v2 Device Preparation)"
                         } elseif (-not $isAdmin) {
                             $statusMessage = "AccessDenied (Administrator privileges required to query MDM WMI provider)"
                         } else {
