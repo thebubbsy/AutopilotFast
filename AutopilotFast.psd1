@@ -5,8 +5,8 @@
     Author = 'Matthew Bubb'
     CompanyName = 'OnYaChamp.com'
     Copyright = '(c) 2026 Matthew Bubb. All rights reserved.'
-    Description = 'Lightning-fast Windows Autopilot hardware hash harvester and direct Microsoft Graph cloud device registrar for Windows OOBE (Shift+F10).'
-    PowerShellVersion = '5.1'
+    Description = 'High-speed Windows Autopilot hardware hash harvester and direct Microsoft Graph cloud device registrar for Windows OOBE (Shift+F10) powered by PowerShell 7+.'
+    PowerShellVersion = '7.2'
     RequiredModules = @()
     FunctionsToExport = @(
         'Get-AutopilotHash',
@@ -21,7 +21,7 @@
     AliasesToExport = @('Import-AutopilotDevice')
     PrivateData = @{
         PSData = @{
-            Tags = @('autopilot', 'intune', 'hardware-hash', 'oobe', 'entra', 'graph-api', 'zero-touch', 'provisioning')
+            Tags = @('autopilot', 'intune', 'hardware-hash', 'oobe', 'entra', 'graph-api', 'pwsh7', 'zero-touch', 'provisioning')
             LicenseUri = 'https://github.com/thebubbsy/AutopilotFast/blob/main/LICENSE'
             ProjectUri = 'https://github.com/thebubbsy/AutopilotFast'
         }
