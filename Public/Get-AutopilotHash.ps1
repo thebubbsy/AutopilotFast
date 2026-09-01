@@ -3,7 +3,7 @@
     Extracts the genuine Windows Autopilot 4K-8K hardware hash and device telemetry.
 .DESCRIPTION
     Queries the official MDM WMI provider (root/cimv2/mdm/dmmap:MDM_DevDetail_Ext01) for the
-    complete hardware hash. Supports manual hash override (-ManualHash) for VMs and lab testing,
+    complete hardware hash. Supports validated manual hash override (-ManualHash) for VMs and lab testing,
     automatic dmwappushservice recovery, and a 10-attempt backoff loop.
 #>
 function Get-AutopilotHash {
@@ -30,13 +30,27 @@ function Get-AutopilotHash {
         $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     } catch { }
 
+    # Validate ManualHash format if provided
+    if ($ManualHash) {
+        $cleanHash = $ManualHash.Trim()
+        $isBase64 = ($cleanHash -match '^[A-Za-z0-9+/=]+$')
+        $isValidLength = ($cleanHash.Length -ge 500 -and $cleanHash.Length -le 16000)
+
+        if (-not $isBase64 -or -not $isValidLength) {
+            throw "Invalid ManualHash format. Autopilot 4K/8K hardware hashes must be valid Base64 strings between 500 and 16,000 characters (Received: $($cleanHash.Length) chars)."
+        }
+        $hardwareHash = $cleanHash
+        $statusMessage = 'ManualOverride (Validated)'
+    } else {
+        $hardwareHash = ''
+        $statusMessage = 'Captured'
+    }
+
     $serial = ''
     $uuid = ''
     $model = ''
     $manufacturer = ''
-    $hardwareHash = $ManualHash
     $pkid = ''
-    $statusMessage = if ($ManualHash) { 'ManualOverride' } else { 'Captured' }
 
     # 1. Ensure dmwappushservice is enabled and running
     try {
