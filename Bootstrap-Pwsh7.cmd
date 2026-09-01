@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================================
-:: AutopilotFast - OOBE PowerShell 7 Bootstrapper & Cloud Device Registrar
+:: AutopilotFast - OOBE PowerShell 7 Bootstrapper (ARM64 & x64 Resilient)
 :: Run at Windows 11/10 OOBE via Shift + F10
 :: ============================================================================
 setlocal EnableDelayedExpansion
@@ -18,19 +18,47 @@ set "PWSH_EXE=C:\Program Files\PowerShell\7\pwsh.exe"
 
 if exist "%PWSH_EXE%" (
     echo  [OK] PowerShell 7 detected at: "%PWSH_EXE%"
-) else (
-    echo  [+] PowerShell 7 not found. Bootstrapping MSI over HTTPS...
-    echo  [+] Downloading and installing PowerShell 7.4 LTS silently...
-    msiexec.exe /i "https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/PowerShell-7.4.5-win-x64.msi" /qn /norestart
-    
-    if not exist "%PWSH_EXE%" (
-        echo  [FAIL] Failed to install PowerShell 7. Check network connectivity.
-        pause
-        exit /b 1
-    )
-    echo  [OK] PowerShell 7 installed successfully!
+    goto :Launch
 )
 
+:: 1. Detect Architecture (ARM64 vs x64)
+set "ARCH=win-x64"
+if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ARCH=win-arm64"
+if /i "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "ARCH=win-arm64"
+
+echo  [+] Detected Architecture: %ARCH%
+
+:: 2. Pre-download MSI using curl.exe to handle GitHub HTTP 302 Redirects
+set "MSI_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/PowerShell-7.4.5-%ARCH%.msi"
+set "MSI_TARGET=%TEMP%\PowerShell-7.4.5-%ARCH%.msi"
+
+echo  [+] Downloading PowerShell 7.4 LTS (%ARCH%) over HTTPS...
+curl.exe -fSLo "%MSI_TARGET%" "%MSI_URL%"
+
+if not exist "%MSI_TARGET%" (
+    echo  [FAIL] Download failed. Falling back to PowerShell WebClient...
+    powershell.exe -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('%MSI_URL%', '%MSI_TARGET%')"
+)
+
+if not exist "%MSI_TARGET%" (
+    echo  [FAIL] Failed to retrieve PowerShell 7 installer package. Check network connection.
+    pause
+    exit /b 1
+)
+
+:: 3. Execute Silent MSI Installation
+echo  [+] Installing PowerShell 7 silently...
+msiexec.exe /i "%MSI_TARGET%" /qn /norestart
+
+if not exist "%PWSH_EXE%" (
+    echo  [FAIL] PowerShell 7 installation did not complete as expected.
+    pause
+    exit /b 1
+)
+
+echo  [OK] PowerShell 7 installed successfully!
+
+:Launch
 echo.
 echo  [+] Launching AutopilotFast in native PowerShell 7...
 echo.
@@ -49,7 +77,7 @@ echo.
     if ($readiness.IsCompliant) {
         Register-AutopilotDevice -FallbackToUsb
     } else {
-        Write-Warning 'Hardware readiness check failed. Review diagnostics above.'
+        Write-Warning 'Hardware readiness check reported violations. Review diagnostics above.'
     }
 }"
 
