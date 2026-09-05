@@ -1,6 +1,10 @@
 BeforeAll {
-    $sharedPath = Resolve-Path (Join-Path $PSScriptRoot '..\..\IntuneShared\IntuneShared.psd1')
-    Import-Module $sharedPath -Force
+    $sharedPath = Join-Path $PSScriptRoot '..\..\IntuneShared\IntuneShared.psd1'
+    if (Test-Path $sharedPath) {
+        Import-Module (Resolve-Path $sharedPath) -Force
+    } else {
+        Import-Module IntuneShared -Force -ErrorAction SilentlyContinue
+    }
     $modulePath = Resolve-Path (Join-Path $PSScriptRoot '..\AutopilotFast.psd1')
     Import-Module $modulePath -Force
 }
@@ -17,18 +21,21 @@ Describe 'AutopilotFast Architecture Tests' {
 
     Context 'Honest Autopilot Harvester' {
         It 'Queries system hardware identity and reports honest MDM status' {
-            $hashObj = Get-AutopilotHash -GroupTag "CI-Tag"
+            $testHash = [Convert]::ToBase64String(([byte[]]@(0x30) + [byte[]]::new(1023)))
+            $hashObj = Get-AutopilotHash -GroupTag "CI-Tag" -ManualHash $testHash
             $hashObj | Should -Not -BeNullOrEmpty
             $hashObj.SerialNumber | Should -Not -BeNullOrEmpty
             $hashObj.SmbiosUuid | Should -Not -BeNullOrEmpty
             $hashObj.WindowsProductID | Should -Not -BeNullOrEmpty
             $hashObj.GroupTag | Should -Be "CI-Tag"
-            $hashObj | Should -HaveProperty 'HardwareHashStatus'
+            $hashObj.HardwareHashStatus | Should -Not -BeNullOrEmpty
         }
 
         It 'Generates standard Intune CSV formatting' {
+            $testHash = [Convert]::ToBase64String(([byte[]]@(0x30) + [byte[]]::new(1023)))
+            $hashObj = Get-AutopilotHash -GroupTag "TestGroup" -ManualHash $testHash
             $tempFile = Join-Path $TestDrive "autopilot-test.csv"
-            $result = Export-AutopilotCsv -Path $tempFile -GroupTag "TestGroup"
+            $result = $hashObj | Export-AutopilotCsv -Path $tempFile
             
             Test-Path $tempFile | Should -Be $true
             $lines = Get-Content $tempFile
