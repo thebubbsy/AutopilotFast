@@ -3,8 +3,10 @@
     Extracts and structurally validates the genuine Windows Autopilot 4K-8K hardware hash.
 .DESCRIPTION
     Queries the official MDM WMI provider (root/cimv2/mdm/dmmap:MDM_DevDetail_Ext01) for the
-    complete hardware hash. Supports structurally verified manual hash override (-ManualHash)
-    for lab testing, automatic dmwappushservice recovery, and a 10-attempt backoff loop.
+    complete hardware hash. Validates the Base64 payload as an OA3 (OEM Activation 3.0) binary blob:
+    the 4-byte magic 'OA3\0' (0x4F 0x41 0x33 0x00 - the familiar "T0EzAA" Base64 prefix) followed by
+    a 2048-16384 byte body. The OA3 blob is NOT ASN.1 DER; it is a proprietary Microsoft structure,
+    so no deeper parsing is attempted. Throws [AutopilotHashParseException] on any structural violation.
 #>
 function Get-AutopilotHash {
     [CmdletBinding()]
@@ -14,9 +16,6 @@ function Get-AutopilotHash {
 
         [Parameter()]
         [string]$AssignedUser = '',
-
-        [Parameter()]
-        [string]$ManualHash = '',
 
         [Parameter()]
         [ValidateSet('Object', 'Csv', 'Json')]
@@ -30,44 +29,105 @@ function Get-AutopilotHash {
         $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     } catch { }
 
-    # Structural Validation of Hardware Hash (Base64 + Binary Length + ASN.1 DER Header Check)
+    # OA3 Hardware Hash Structural Validator
     function Test-AutopilotHashStructure {
-        param([string]$HashString)
-        if ([string]::IsNullOrWhiteSpace($HashString)) { return $false }
-        
-        $clean = $HashString.Trim()
-        if ($clean -notmatch '^[A-Za-z0-9+/=]+$') {
-            throw "Hardware hash failed Base64 charset validation."
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$HashString
+        )
+
+        # 1. Null / Whitespace check
+        if ([string]::IsNullOrWhiteSpace($HashString)) {
+            throw [AutopilotHashParseException]::new(
+                "Hardware hash string is null, empty, or whitespace.",
+                "EmptyPayload"
+            )
         }
 
+        $clean = $HashString.Trim()
+
+        # 2. Base64 Charset & Multiple-of-4 Validation
+        if ($clean -notmatch '^[A-Za-z0-9+/=]+$' -or ($clean.Length % 4 -ne 0)) {
+            throw [AutopilotHashParseException]::new(
+                "Hardware hash string failed Base64 validation (invalid character set or length not a multiple of 4).",
+                "InvalidBase64Encoding"
+            )
+        }
+
+        # 3. Base64 Binary Decoding
+        [byte[]]$bytes = $null
         try {
             $bytes = [Convert]::FromBase64String($clean)
-            $byteLen = $bytes.Length
-
-            # Valid OA3 / MDM Autopilot hashes are binary blobs between 1KB and 16KB
-            if ($byteLen -lt 1024 -or $byteLen -gt 16384) {
-                throw "Hardware hash decoded length ($byteLen bytes) is outside valid Autopilot 4K/8K specification (1024 - 16384 bytes)."
-            }
-
-            # Verify standard OA3 / ASN.1 DER sequence header (0x30 or device hardware descriptor tag)
-            $headerByte = $bytes[0]
-            if ($headerByte -ne 0x30 -and $headerByte -ne 0x01 -and $headerByte -ne 0x02) {
-                Write-Warning "Hardware hash header byte (0x$($headerByte.ToString('X2'))) does not match standard ASN.1 DER / OA3 descriptor structure."
-            }
-
-            return $true
         }
-        catch {
-            throw "Autopilot hardware hash structural verification failed: $($_.Exception.Message)"
+        catch [System.FormatException] {
+            throw [AutopilotHashParseException]::new(
+                "Failed to decode Base64 hardware hash: $($_.Exception.Message)",
+                "InvalidBase64Encoding",
+                $_.Exception
+            )
         }
+
+        $totalBytes = $bytes.Length
+        $magic = [byte[]](0x4F, 0x41, 0x33, 0x00)   # 'OA3\0'
+
+        # 4. Truncated Header Check
+        if ($totalBytes -lt $magic.Length) {
+            $firstByte = if ($totalBytes -gt 0) { $bytes[0] } else { [byte]0 }
+            throw [AutopilotHashParseException]::new(
+                "Hardware hash stream is truncated ($totalBytes bytes); the OA3 header requires at least $($magic.Length) bytes.",
+                "TruncatedHeader",
+                $totalBytes,
+                $magic.Length,
+                $firstByte
+            )
+        }
+
+        # 5. OA3 Magic Validation ('OA3\0' => Base64 prefix "T0EzAA")
+        for ($i = 0; $i -lt $magic.Length; $i++) {
+            if ($bytes[$i] -ne $magic[$i]) {
+                $tagHex = "0x" + $bytes[0].ToString("X2")
+                throw [AutopilotHashParseException]::new(
+                    "Invalid hardware hash header (first byte $tagHex). Expected OA3 magic bytes 4F 41 33 00 ('OA3'); this is not an OEM Activation 3.0 hardware blob.",
+                    "InvalidOA3Magic",
+                    $totalBytes,
+                    0,
+                    $bytes[0]
+                )
+            }
+        }
+
+        # 6. Total Length Bounds (2048 - 16384 bytes; 4K blobs are typical, 8K for TPM-attested devices)
+        if ($totalBytes -lt 2048 -or $totalBytes -gt 16384) {
+            throw [AutopilotHashParseException]::new(
+                "Hardware hash length ($totalBytes bytes) is outside the valid Autopilot 4K/8K range (2048 - 16384 bytes).",
+                "PayloadOutOfBounds",
+                $totalBytes,
+                2048,
+                $bytes[0]
+            )
+        }
+
+        return $true
     }
 
-    if ($ManualHash) {
-        Test-AutopilotHashStructure -HashString $ManualHash | Out-Null
-        $hardwareHash = $ManualHash.Trim()
-        $statusMessage = 'ManualOverride (Structurally Verified)'
-    } else {
-        $hardwareHash = ''
+    $hardwareHash = ''
+    $statusMessage = 'Captured'
+
+    # Check for Active Test Mock State
+    $mockHash = $null
+    if (Get-Command -Name 'Get-AutopilotMockHardwareHash' -ErrorAction SilentlyContinue) {
+        $mockHash = Get-AutopilotMockHardwareHash
+    }
+    if ($null -eq $mockHash -and $null -ne $global:__AutopilotMockHardwareHash) {
+        $mockHash = $global:__AutopilotMockHardwareHash
+    }
+    if ($null -eq $mockHash -and $null -ne $env:AUTOPILOT_MOCK_HARDWARE_HASH) {
+        $mockHash = $env:AUTOPILOT_MOCK_HARDWARE_HASH
+    }
+
+    if ($null -ne $mockHash) {
+        Test-AutopilotHashStructure -HashString $mockHash | Out-Null
+        $hardwareHash = $mockHash.Trim()
         $statusMessage = 'Captured'
     }
 
@@ -77,20 +137,20 @@ function Get-AutopilotHash {
     $manufacturer = ''
     $pkid = ''
 
-    # 1. Ensure dmwappushservice is enabled and running
-    try {
-        $svc = Get-Service -Name 'dmwappushservice' -ErrorAction SilentlyContinue
-        if ($svc) {
-            if ($svc.StartType -eq 'Disabled') {
-                Write-Host "  [+] Configuring dmwappushservice startup to Automatic..." -ForegroundColor Cyan
-                Set-Service -Name 'dmwappushservice' -StartupType Automatic -ErrorAction SilentlyContinue
+    # 1. Ensure dmwappushservice is enabled and running (if not using mock)
+    if (-not $hardwareHash) {
+        try {
+            $svc = Get-Service -Name 'dmwappushservice' -ErrorAction SilentlyContinue
+            if ($svc) {
+                if ($svc.StartType -eq 'Disabled') {
+                    Set-Service -Name 'dmwappushservice' -StartupType Automatic -ErrorAction SilentlyContinue
+                }
+                if ($svc.Status -ne 'Running') {
+                    Start-Service -Name 'dmwappushservice' -ErrorAction SilentlyContinue
+                }
             }
-            if ($svc.Status -ne 'Running') {
-                Write-Host "  [+] Starting dmwappushservice for MDM WMI provider initialization..." -ForegroundColor Cyan
-                Start-Service -Name 'dmwappushservice' -ErrorAction SilentlyContinue
-            }
-        }
-    } catch { }
+        } catch { }
+    }
 
     # 2. Retrieve BIOS and System Product info via CIM
     try {
@@ -117,7 +177,7 @@ function Get-AutopilotHash {
         $pkid = (Get-ItemProperty -Path $regKey -Name ProductId -ErrorAction SilentlyContinue).ProductId
     } catch { }
 
-    # 4. Retrieve Hardware Hash with 10-Attempt Backoff Loop (if not manual)
+    # 4. Live Hardware Hash Extraction with Backoff Loop (if mock not set)
     if (-not $hardwareHash) {
         $maxAttempts = 10
         for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
@@ -126,21 +186,27 @@ function Get-AutopilotHash {
                 $rawHash = $devDetail.DeviceHardwareData
                 if ($rawHash) {
                     Test-AutopilotHashStructure -HashString $rawHash | Out-Null
-                    $hardwareHash = $rawHash
+                    $hardwareHash = $rawHash.Trim()
                     break
                 }
             }
             catch {
+                if ($_.Exception -is [AutopilotHashParseException]) {
+                    throw $_.Exception
+                }
                 try {
                     $devDetailWmi = Get-WmiObject -Namespace 'root/cimv2/mdm/dmmap' -Class 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext01' AND ParentID='./DevDetail'" -ErrorAction Stop
                     $rawHash = $devDetailWmi.DeviceHardwareData
                     if ($rawHash) {
                         Test-AutopilotHashStructure -HashString $rawHash | Out-Null
-                        $hardwareHash = $rawHash
+                        $hardwareHash = $rawHash.Trim()
                         break
                     }
                 }
                 catch {
+                    if ($_.Exception -is [AutopilotHashParseException]) {
+                        throw $_.Exception
+                    }
                     if ($attempt -lt $maxAttempts) {
                         Start-Sleep -Seconds 5
                     } else {
@@ -158,7 +224,7 @@ function Get-AutopilotHash {
         }
     }
 
-    # 5. Cache Captured Hash Locally (Capture Once, Never Lose)
+    # 5. Cache Captured Hash Locally
     if ($hardwareHash) {
         try {
             $cacheDir = Join-Path $env:TEMP "AutopilotFast"

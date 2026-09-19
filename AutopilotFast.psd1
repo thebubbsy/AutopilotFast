@@ -7,12 +7,14 @@
     Copyright = '(c) 2026 Matthew Bubb. All rights reserved.'
     Description = 'High-speed Windows Autopilot hardware hash harvester and direct Microsoft Graph cloud device registrar for Windows OOBE (Shift+F10) powered by PowerShell 7+.'
     PowerShellVersion = '7.2'
+    ScriptsToProcess = @('Private\AutopilotHashParseException.ps1')
     RequiredModules = @()
     FunctionsToExport = @(
         'Get-AutopilotHash',
         'Export-AutopilotCsv',
         'Connect-AutopilotGraph',
         'Register-AutopilotDevice',
+        'Sync-AutopilotProfile',
         'Set-AutopilotGroupTag',
         'Test-AutopilotReadiness'
     )

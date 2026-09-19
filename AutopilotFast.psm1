@@ -25,6 +25,7 @@ Export-ModuleMember -Function @(
     'Export-AutopilotCsv',
     'Connect-AutopilotGraph',
     'Register-AutopilotDevice',
+    'Sync-AutopilotProfile',
     'Set-AutopilotGroupTag',
     'Test-AutopilotReadiness'
 ) -Alias @(
