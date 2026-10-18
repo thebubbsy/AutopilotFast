@@ -19,7 +19,13 @@ function Get-AutopilotHash {
 
         [Parameter()]
         [ValidateSet('Object', 'Csv', 'Json')]
-        [string]$Format = 'Object'
+        [string]$Format = 'Object',
+
+        [Parameter()]
+        [switch]$CopyToClipboard,
+
+        [Parameter()]
+        [switch]$Quiet
     )
 
     $isAdmin = $false
@@ -234,6 +240,11 @@ function Get-AutopilotHash {
         } catch { }
     }
 
+    $decodedLen = 0
+    if ($hardwareHash) {
+        try { $decodedLen = ([Convert]::FromBase64String($hardwareHash)).Length } catch { $decodedLen = 0 }
+    }
+
     $result = [PSCustomObject]@{
         SerialNumber       = $serial
         SmbiosUuid         = $uuid
@@ -245,8 +256,36 @@ function Get-AutopilotHash {
         HardwareHash       = $hardwareHash
         HardwareHashStatus = $statusMessage
         HashLengthBytes    = if ($hardwareHash) { $hardwareHash.Length } else { 0 }
+        DecodedBytes       = $decodedLen
+        OA3MagicVerified   = [bool]($hardwareHash -and $decodedLen -ge 2048)
         IsElevated         = $isAdmin
         CaptureTimestamp   = (Get-Date).ToString('o')
+    }
+
+    if ($CopyToClipboard -and $hardwareHash) {
+        try {
+            $csvRow = "$serial,$pkid,$hardwareHash,$GroupTag,$AssignedUser"
+            Set-Clipboard -Value $csvRow -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Autopilot CSV row copied to clipboard ($($hardwareHash.Length) chars)." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
+    if ($Format -eq 'Object' -and -not $Quiet) {
+        $oa3Badge = if ($result.OA3MagicVerified) { "OA3\0 (0x4F413300) [VERIFIED]" } else { "UNVERIFIED ($statusMessage)" }
+        $privBadge = if ($isAdmin) { "Elevated (Admin/SYSTEM)" } else { "Standard User" }
+        $gtDisplay = if ($GroupTag) { $GroupTag } else { "<none>" }
+        Write-Host ""
+        Write-Host "  +------------------------------------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host "  |  AUTOPILOT OA3 HARDWARE IDENTITY VERIFICATION CARD               |" -ForegroundColor Cyan
+        Write-Host "  +------------------------------------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host ("  |  Serial / Model : " + ("$serial / $model").PadRight(47).Substring(0, 47) + "|") -ForegroundColor White
+        Write-Host ("  |  OA3 Header     : " + $oa3Badge.PadRight(47).Substring(0, 47) + "|") -ForegroundColor $(if ($result.OA3MagicVerified) { 'Green' } else { 'Yellow' })
+        Write-Host ("  |  Hash Payload   : " + ("$($result.HashLengthBytes) Base64 chars ($decodedLen binary bytes)").PadRight(47).Substring(0, 47) + "|") -ForegroundColor Gray
+        Write-Host ("  |  Group Tag      : " + $gtDisplay.PadRight(47).Substring(0, 47) + "|") -ForegroundColor Gray
+        Write-Host ("  |  Privilege      : " + $privBadge.PadRight(47).Substring(0, 47) + "|") -ForegroundColor Gray
+        Write-Host "  +------------------------------------------------------------------+" -ForegroundColor DarkCyan
     }
 
     switch ($Format) {

@@ -153,7 +153,7 @@ function Register-AutopilotDevice {
 
     # 5. Two-Stage Polling for Ingestion and Profile Assignment
     if ($WaitForSync -and $importId) {
-        Write-Host "  [+] Stage 1/2: Polling Ingestion Queue for completion..." -ForegroundColor Cyan
+        Write-Host "`n  [#####-----] 50% | Stage 1/2: Polling Intune Ingestion Queue..." -ForegroundColor Cyan
         $checkUri = "https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/$importId"
         $startTime = [datetime]::UtcNow
         $currentInterval = 5
@@ -168,10 +168,11 @@ function Register-AutopilotDevice {
             try {
                 $statusRes = Invoke-ResilientGraphRest -Uri $checkUri -Method GET -Headers $authHeader
                 $state = $statusRes.state.deviceImportStatus
+                $elapsedSec = [int]([datetime]::UtcNow - $startTime).TotalSeconds
 
                 if ($state -eq 'complete') {
                     $importComplete = $true
-                    Write-Host "  [OK] Stage 1/2 Complete: Hardware hash ingested into tenant!" -ForegroundColor Green
+                    Write-Host "  [##########] 100% Stage 1/2 Complete: Hardware hash ingested into tenant (${elapsedSec}s)!" -ForegroundColor Green
                     break
                 }
                 elseif ($state -eq 'error') {
@@ -190,7 +191,7 @@ function Register-AutopilotDevice {
         }
 
         # Stage 2: Profile Assignment Polling
-        Write-Host "  [+] Stage 2/2: Polling Entra ID Dynamic Group Profile Assignment..." -ForegroundColor Cyan
+        Write-Host "  [########--] 80% | Stage 2/2: Polling Entra ID Dynamic Group Profile Assignment..." -ForegroundColor Cyan
         $remainingMins = [Math]::Max(1, [int]($TimeoutMinutes - ([datetime]::UtcNow - $startTime).TotalMinutes))
         $syncResult = Sync-AutopilotProfile -SerialNumber $deviceInfo.SerialNumber -WaitForAssignment -TimeoutMinutes $remainingMins -Reboot:$Reboot
         return $syncResult
