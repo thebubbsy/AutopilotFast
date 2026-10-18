@@ -36,7 +36,13 @@ function Export-AutopilotCsv {
         [string]$AssignedUser = '',
 
         [Parameter()]
-        [switch]$Append
+        [switch]$Append,
+
+        [Parameter()]
+        [switch]$CopyPath,
+
+        [Parameter()]
+        [switch]$Quiet
     )
 
     begin {
@@ -58,13 +64,17 @@ function Export-AutopilotCsv {
 
         # Handle USB Auto-Detection
         $targetPath = $Path
+        $storageMedia = 'Local Disk'
         if ($AutoDetectUsb) {
             try {
                 $usbDrives = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=2" -ErrorAction SilentlyContinue)
                 if ($usbDrives.Count -gt 0) {
                     $driveLetter = $usbDrives[0].DeviceID
                     $targetPath = Join-Path $driveLetter "Autopilot-Hashes.csv"
-                    Write-Host ("  [+] USB Drive detected (" + $driveLetter + "). Targeting: " + $targetPath) -ForegroundColor Cyan
+                    $storageMedia = "USB Removable ($driveLetter)"
+                    if (-not $Quiet) {
+                        Write-Host ("  [+] USB Drive detected (" + $driveLetter + "). Targeting: " + $targetPath) -ForegroundColor Cyan
+                    }
                     $Append = $true
                 } else {
                     Write-Warning ("No USB flash drive detected. Falling back to " + $targetPath)
@@ -97,7 +107,31 @@ function Export-AutopilotCsv {
             $lines | Out-File -FilePath $targetPath -Force -Encoding utf8
         }
 
-        Write-Host ("  [OK] Exported " + $items.Count + " device(s) to: " + $targetPath) -ForegroundColor Green
-        return (Get-Item $targetPath)
+        $fileItem = Get-Item $targetPath
+        $totalRecords = [Math]::Max(0, @(Get-Content -Path $fileItem.FullName -ErrorAction SilentlyContinue).Count - 1)
+        $sizeKb = [Math]::Round($fileItem.Length / 1KB, 2)
+        $firstSerial = if ($items[0] -and $items[0].SerialNumber) { $items[0].SerialNumber } else { 'N/A' }
+        $effectiveTag = if ($items[0] -and $items[0].GroupTag) { $items[0].GroupTag } elseif ($GroupTag) { $GroupTag } else { '(none)' }
+        $writeMode = if ($Append -and $fileExists) { 'Appended' } else { 'Created / Overwritten' }
+
+        if ($CopyPath) {
+            try { Set-Clipboard -Value $fileItem.FullName -ErrorAction SilentlyContinue } catch { }
+        }
+
+        if (-not $Quiet) {
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host "  | AUTOPILOT CSV HARVEST RECEIPT                                        |" -ForegroundColor Cyan
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host ("  | Destination : {0,-54} |" -f $fileItem.FullName) -ForegroundColor Gray
+            Write-Host ("  | Storage     : {0,-24} Mode  : {1,-21} |" -f $storageMedia, $writeMode) -ForegroundColor Gray
+            Write-Host ("  | Batch Count : {0,-24} Total : {1,-21} |" -f "$($items.Count) device(s)", "$totalRecords row(s) ($sizeKb KB)") -ForegroundColor Green
+            Write-Host ("  | Lead Serial : {0,-24} Tag   : {1,-21} |" -f $firstSerial, $effectiveTag) -ForegroundColor Gray
+            if ($CopyPath) {
+                Write-Host "  | [CLIPBOARD] Full CSV file path copied to system clipboard.           |" -ForegroundColor Green
+            }
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+        }
+
+        return $fileItem
     }
 }
