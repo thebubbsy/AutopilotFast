@@ -96,7 +96,15 @@ function Test-AutopilotReadiness {
         Write-Host "  [FAIL] Windows OS Build: $build (Unsupported)" -ForegroundColor Red
     }
 
+    $pct = [Math]::Round(($readiness.ChecksPassed / $readiness.TotalChecks) * 100)
+    $filled = $readiness.ChecksPassed * 2
+    $empty = ($readiness.TotalChecks * 2) - $filled
+    $bar = ('#' * $filled) + ('-' * $empty)
+    $barColor = if ($readiness.IsCompliant) { 'Green' } elseif ($readiness.ChecksPassed -ge 3) { 'Yellow' } else { 'Red' }
+
     Write-Host "  ------------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host "  Readiness Score : [$bar] $pct% ($($readiness.ChecksPassed)/$($readiness.TotalChecks) checks passed)" -ForegroundColor $barColor
+    Write-Host "  Posture Summary : UEFI=$($readiness.UefiMode) | SecureBoot=$($readiness.SecureBootOn) | TPM=$($readiness.TpmReady) | Net=$($readiness.NetworkHealthy) | Build=$build" -ForegroundColor Gray
     if ($readiness.IsCompliant) {
         Write-Host "  [READY] Device is 100% READY for Windows Autopilot Enrollment!`n" -ForegroundColor Green
     } else {
