@@ -55,7 +55,10 @@ function Sync-AutopilotProfile {
         [switch]$TriggerTenantSync = $true,
 
         [Parameter()]
-        [switch]$Reboot
+        [switch]$Reboot,
+
+        [Parameter()]
+        [switch]$Quiet
     )
 
     # 1. Ensure Authentication
@@ -71,11 +74,15 @@ function Sync-AutopilotProfile {
 
     # 2. Trigger Tenant Autopilot Sync
     if ($TriggerTenantSync) {
-        Write-Host "  [+] Triggering Intune Autopilot tenant synchronization..." -ForegroundColor Cyan
+        if (-not $Quiet) {
+            Write-Host "  [+] Triggering Intune Autopilot tenant synchronization..." -ForegroundColor Cyan
+        }
         try {
             $syncUri = "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotSettings/sync"
             Invoke-ResilientGraphRest -Uri $syncUri -Method POST -Headers $authHeader | Out-Null
-            Write-Host "  [OK] Autopilot sync signal acknowledged by Microsoft Graph." -ForegroundColor Green
+            if (-not $Quiet) {
+                Write-Host "  [OK] Autopilot sync signal acknowledged by Microsoft Graph." -ForegroundColor Green
+            }
             Write-IntuneLog -Message "Triggered tenant Autopilot profile sync" -Level Info -Component "AutopilotFast" -CustomData @{ SerialNumber = $SerialNumber; DeviceId = $DeviceId }
         }
         catch {
@@ -85,6 +92,17 @@ function Sync-AutopilotProfile {
     }
 
     if (-not $WaitForAssignment) {
+        if (-not $Quiet) {
+            Write-Host ""
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host "  | AUTOPILOT TENANT SYNC DISPATCHED                                     |" -ForegroundColor Cyan
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host ("  | Tenant Sync : {0,-54} |" -f $(if ($TriggerTenantSync) { 'TRIGGERED (POST /windowsAutopilotSettings/sync)' } else { 'SKIPPED' })) -ForegroundColor Gray
+            Write-Host ("  | Target      : {0,-54} |" -f $(if ($SerialNumber) { "SN: $SerialNumber" } elseif ($DeviceId) { "ID: $DeviceId" } else { 'Tenant-Wide' })) -ForegroundColor Gray
+            Write-Host "  | Mode        : Immediate Return (No Profile Polling)                  |" -ForegroundColor DarkGray
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host ""
+        }
         return [PSCustomObject]@{
             TriggeredSync = [bool]$TriggerTenantSync
             Status        = "SyncTriggered"
@@ -92,7 +110,9 @@ function Sync-AutopilotProfile {
     }
 
     # 3. Dynamic Group & Profile Assignment Backoff Poller
-    Write-Host "  [+] Polling Intune for profile assignment (Timeout: $TimeoutMinutes mins)..." -ForegroundColor Cyan
+    if (-not $Quiet) {
+        Write-Host "  [+] Polling Intune for profile assignment (Timeout: $TimeoutMinutes mins)..." -ForegroundColor Cyan
+    }
     Write-IntuneLog -Message "Initiating profile assignment polling" -Level Info -Component "AutopilotFast" -CustomData @{
         SerialNumber           = $SerialNumber
         DeviceId               = $DeviceId
@@ -104,6 +124,7 @@ function Sync-AutopilotProfile {
     $currentInterval = $InitialIntervalSeconds
     $attempt = 0
     $targetDevice = $null
+    $timeoutTotalSec = [Math]::Max(1, $TimeoutMinutes * 60)
 
     while (([datetime]::UtcNow - $startTime).TotalMinutes -lt $TimeoutMinutes) {
         $attempt++
@@ -136,11 +157,29 @@ function Sync-AutopilotProfile {
                 $profileName = if ($targetDevice.assignedDeploymentProfile) { $targetDevice.assignedDeploymentProfile.displayName } else { "None" }
 
                 $elapsedSec = [int]([datetime]::UtcNow - $startTime).TotalSeconds
-                Write-Host "  [*] [$elapsedSec s] Assignment Status: '$assignStatus' | Profile: '$profileName'" -ForegroundColor DarkGray
+                if (-not $Quiet) {
+                    $pct = [Math]::Min(100, [int][Math]::Floor(($elapsedSec * 100.0) / $timeoutTotalSec))
+                    $filled = [Math]::Min(16, [int][Math]::Floor(($pct * 16.0) / 100.0))
+                    $bar = ('#' * $filled) + ('.' * (16 - $filled))
+                    Write-Host ("  [*] [{0}] {1,3}% ({2}s/{3}m) #{4} | Status: '{5}' | Profile: '{6}'" -f $bar, $pct, $elapsedSec, $TimeoutMinutes, $attempt, $assignStatus, $profileName) -ForegroundColor DarkGray
+                }
 
                 if ($assignStatus -eq 'assigned') {
                     $assignedTime = $targetDevice.deploymentProfileAssignedDateTime
-                    Write-Host "`n  [OK] Autopilot Profile Assigned: '$profileName' (Assigned at: $assignedTime)" -ForegroundColor Green
+                    if (-not $Quiet) {
+                        Write-Host ""
+                        Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
+                        Write-Host "  | AUTOPILOT PROFILE ASSIGNMENT RECEIPT                    [ASSIGNED]   |" -ForegroundColor Green
+                        Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
+                        Write-Host ("  | Serial Number : {0,-52} |" -f $targetDevice.serialNumber) -ForegroundColor White
+                        Write-Host ("  | Device ID     : {0,-52} |" -f $targetDevice.id) -ForegroundColor Gray
+                        Write-Host ("  | Group Tag     : {0,-52} |" -f $(if ($targetDevice.groupTag) { $targetDevice.groupTag } else { '<none>' })) -ForegroundColor Cyan
+                        Write-Host ("  | Profile Name  : {0,-52} |" -f $profileName) -ForegroundColor Green
+                        Write-Host ("  | Assigned At   : {0,-52} |" -f $assignedTime) -ForegroundColor Gray
+                        Write-Host ("  | Telemetry     : {0,-52} |" -f "$attempt poll attempt(s) in ${elapsedSec}s") -ForegroundColor DarkGray
+                        Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
+                        Write-Host ""
+                    }
                     Write-IntuneLog -Message "Profile successfully assigned to device" -Level Info -Component "AutopilotFast" -CustomData @{
                         SerialNumber                      = $SerialNumber
                         DeviceId                          = $DeviceId
@@ -163,14 +202,27 @@ function Sync-AutopilotProfile {
                     }
 
                     if ($Reboot) {
-                        Write-Host "  [+] Initiating system reboot to trigger corporate Autopilot OOBE..." -ForegroundColor Cyan
+                        if (-not $Quiet) {
+                            Write-Host "  [+] Initiating system reboot to trigger corporate Autopilot OOBE..." -ForegroundColor Cyan
+                        }
                         Restart-Computer -Force
                     }
 
                     return $resultObj
                 }
                 elseif ($assignStatus -eq 'failed' -or $assignStatus -eq 'error') {
-                    Write-Host "`n  [FAIL] Deployment profile assignment failed: $detailedStatus" -ForegroundColor Red
+                    if (-not $Quiet) {
+                        Write-Host ""
+                        Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkRed
+                        Write-Host "  | AUTOPILOT PROFILE ASSIGNMENT RECEIPT                      [FAILED]   |" -ForegroundColor Red
+                        Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkRed
+                        Write-Host ("  | Serial Number : {0,-52} |" -f $targetDevice.serialNumber) -ForegroundColor White
+                        Write-Host ("  | Device ID     : {0,-52} |" -f $targetDevice.id) -ForegroundColor Gray
+                        Write-Host ("  | Status        : {0,-52} |" -f "$assignStatus ($detailedStatus)") -ForegroundColor Red
+                        Write-Host ("  | Telemetry     : {0,-52} |" -f "$attempt poll attempt(s) in ${elapsedSec}s") -ForegroundColor DarkGray
+                        Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkRed
+                        Write-Host ""
+                    }
                     Write-IntuneLog -Message "Deployment profile assignment failed" -Level Error -Component "AutopilotFast" -CustomData @{
                         SerialNumber   = $SerialNumber
                         DeviceId       = $DeviceId
