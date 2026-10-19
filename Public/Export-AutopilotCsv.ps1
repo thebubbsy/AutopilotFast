@@ -42,6 +42,12 @@ function Export-AutopilotCsv {
         [switch]$CopyPath,
 
         [Parameter()]
+        [switch]$CopyReceipt,
+
+        [Parameter()]
+        [switch]$CopyTsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -118,6 +124,32 @@ function Export-AutopilotCsv {
             try { Set-Clipboard -Value $fileItem.FullName -ErrorAction SilentlyContinue } catch { }
         }
 
+        if ($CopyTsv) {
+            $tsvLines = [System.Collections.Generic.List[string]]::new()
+            $tsvLines.Add("SerialNumber`tProductId`tGroupTag`tAssignedUser`tDestinationCsv")
+            foreach ($item in $items) {
+                $gt = if ($item.GroupTag) { $item.GroupTag } else { $GroupTag }
+                $au = if ($item.AssignedUser) { $item.AssignedUser } else { $AssignedUser }
+                $tsvLines.Add("$($item.SerialNumber)`t$($item.WindowsProductID)`t$gt`t$au`t$($fileItem.FullName)")
+            }
+            try { Set-Clipboard -Value ($tsvLines -join [Environment]::NewLine) -ErrorAction SilentlyContinue } catch { }
+        }
+
+        if ($CopyReceipt) {
+            $mdLines = @(
+                "### Autopilot CSV Harvest Receipt",
+                "| Property | Value |",
+                "| :--- | :--- |",
+                "| **Destination** | ``$($fileItem.FullName)`` |",
+                "| **Storage Media** | $storageMedia ($writeMode) |",
+                "| **Batch Count** | $($items.Count) device(s) |",
+                "| **Total CSV Rows** | $totalRecords row(s) ($sizeKb KB) |",
+                "| **Lead Serial** | ``$firstSerial`` |",
+                "| **Group Tag** | ``$effectiveTag`` |"
+            )
+            try { Set-Clipboard -Value ($mdLines -join [Environment]::NewLine) -ErrorAction SilentlyContinue } catch { }
+        }
+
         if (-not $Quiet) {
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host "  | AUTOPILOT CSV HARVEST RECEIPT                                        |" -ForegroundColor Cyan
@@ -128,6 +160,12 @@ function Export-AutopilotCsv {
             Write-Host ("  | Lead Serial : {0,-24} Tag   : {1,-21} |" -f $firstSerial, $effectiveTag) -ForegroundColor Gray
             if ($CopyPath) {
                 Write-Host "  | [CLIPBOARD] Full CSV file path copied to system clipboard.           |" -ForegroundColor Green
+            }
+            if ($CopyTsv) {
+                Write-Host "  | [CLIPBOARD] Tab-separated device rows copied to system clipboard.    |" -ForegroundColor Green
+            }
+            if ($CopyReceipt) {
+                Write-Host "  | [CLIPBOARD] Markdown harvest receipt table copied to clipboard.      |" -ForegroundColor Green
             }
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
         }
