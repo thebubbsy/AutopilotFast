@@ -39,11 +39,19 @@ function Register-AutopilotDevice {
         [switch]$Reboot,
 
         [Parameter()]
-        [switch]$FallbackToUsb = $true
+        [switch]$FallbackToUsb = $true,
+
+        [Parameter()]
+        [switch]$CopyReceipt,
+
+        [Parameter()]
+        [switch]$Quiet
     )
 
-    Write-Host "`n  [AutopilotFast] Direct Cloud Device Registration" -ForegroundColor Cyan
-    Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
+    if (-not $Quiet) {
+        Write-Host "`n  [AutopilotFast] Direct Cloud Device Registration" -ForegroundColor Cyan
+        Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
+    }
 
     Write-IntuneLog -Message "Starting Autopilot device registration" -Level Info -Component "AutopilotFast" -CustomData @{
         GroupTag     = $GroupTag
@@ -52,8 +60,10 @@ function Register-AutopilotDevice {
     }
 
     # 1. Pre-Flight Staged Network Probe with HTTPS Clock Sync
-    Write-Host "  [+] Executing 7-stage network & HTTPS time sync diagnostic..." -ForegroundColor Cyan
-    $netCheck = Test-StagedNetwork -TimeoutSeconds 4
+    if (-not $Quiet) {
+        Write-Host "  [+] Executing 7-stage network & HTTPS time sync diagnostic..." -ForegroundColor Cyan
+    }
+    $netCheck = Test-StagedNetwork -TimeoutSeconds 4 -Quiet:$Quiet
 
     if (-not $netCheck.IsFullyReady) {
         $failedStages = @($netCheck.Details | Where-Object { -not $_.Success })
@@ -63,7 +73,9 @@ function Register-AutopilotDevice {
         }
 
         if ($FallbackToUsb) {
-            Write-Host "  [+] Checking for Offline Autopilot JSON and USB export..." -ForegroundColor Yellow
+            if (-not $Quiet) {
+                Write-Host "  [+] Checking for Offline Autopilot JSON and USB export..." -ForegroundColor Yellow
+            }
             
             # Search USB for AutopilotConfigurationFile.json
             try {
@@ -76,41 +88,53 @@ function Register-AutopilotDevice {
                     if (Test-Path $candidateJson) {
                         if (-not (Test-Path $destDir)) { [System.IO.Directory]::CreateDirectory($destDir) | Out-Null }
                         Copy-Item -Path $candidateJson -Destination $destJson -Force
-                        Write-Host "  [OK] Injected Offline Autopilot Profile: $destJson" -ForegroundColor Green
+                        if (-not $Quiet) {
+                            Write-Host "  [OK] Injected Offline Autopilot Profile: $destJson" -ForegroundColor Green
+                        }
                         Write-IntuneLog -Message "Injected offline Autopilot JSON profile from USB" -Level Info -Component "AutopilotFast" -CustomData @{ Source = $candidateJson }
                         break
                     }
                 }
             } catch { }
 
-            Write-Host "  [+] Exporting hardware identity to USB..." -ForegroundColor Yellow
-            return (Export-AutopilotCsv -AutoDetectUsb -GroupTag $GroupTag -AssignedUser $AssignedUser)
+            if (-not $Quiet) {
+                Write-Host "  [+] Exporting hardware identity to USB..." -ForegroundColor Yellow
+            }
+            return (Export-AutopilotCsv -AutoDetectUsb -GroupTag $GroupTag -AssignedUser $AssignedUser -Quiet:$Quiet)
         } else {
             throw "Registration halted due to network diagnostic failures."
         }
     }
 
     # 2. Extract Hardware Hash (OA3 structural validation)
-    Write-Host "  [+] Extracting Hardware Hash..." -ForegroundColor Cyan
-    $deviceInfo = Get-AutopilotHash -GroupTag $GroupTag -AssignedUser $AssignedUser
+    if (-not $Quiet) {
+        Write-Host "  [+] Extracting Hardware Hash..." -ForegroundColor Cyan
+    }
+    $deviceInfo = Get-AutopilotHash -GroupTag $GroupTag -AssignedUser $AssignedUser -Quiet:$Quiet
 
     if (-not $deviceInfo.HardwareHash) {
         Write-Error ("Failed to extract hardware hash: " + $deviceInfo.HardwareHashStatus)
         if ($FallbackToUsb) {
-            Write-Host "  [+] Saving available device identifiers to USB..." -ForegroundColor Yellow
-            Export-AutopilotCsv -AutoDetectUsb -GroupTag $GroupTag -AssignedUser $AssignedUser | Out-Null
+            if (-not $Quiet) {
+                Write-Host "  [+] Saving available device identifiers to USB..." -ForegroundColor Yellow
+            }
+            Export-AutopilotCsv -AutoDetectUsb -GroupTag $GroupTag -AssignedUser $AssignedUser -Quiet:$Quiet | Out-Null
         }
         throw ("Hardware hash extraction failed: " + $deviceInfo.HardwareHashStatus)
     }
 
     $hashLen = $deviceInfo.HardwareHash.Length
-    Write-Host ("  [OK] Hash extracted: Serial [" + $deviceInfo.SerialNumber + "] (" + $hashLen + " chars)") -ForegroundColor Green
+    if (-not $Quiet) {
+        Write-Host ("  [OK] Hash extracted: Serial [" + $deviceInfo.SerialNumber + "] (" + $hashLen + " chars)") -ForegroundColor Green
+    }
 
     # 3. Ensure Authentication
     $token = $script:AutopilotAccessToken
     if (-not $token) {
-        Write-Host "  [+] Authenticating to Microsoft Graph..." -ForegroundColor Cyan
-        $token = Connect-AutopilotGraph
+        if (-not $Quiet) {
+            Write-Host "  [+] Authenticating to Microsoft Graph..." -ForegroundColor Cyan
+        }
+        $token = Connect-AutopilotGraph -Quiet:$Quiet
     }
 
     $authHeader = @{
@@ -131,12 +155,50 @@ function Register-AutopilotDevice {
         $payload['assignedUserPrincipalName'] = $AssignedUser
     }
 
-    Write-Host "  [+] Uploading hardware identity to Microsoft Intune..." -ForegroundColor Cyan
+    if (-not $Quiet) {
+        Write-Host "  [+] Uploading hardware identity to Microsoft Intune..." -ForegroundColor Cyan
+    }
     $importId = $null
     try {
         $importResult = Invoke-ResilientGraphRest -Uri $uri -Method POST -Headers $authHeader -Body $payload
         $importId = $importResult.id
-        Write-Host ("  [OK] Device uploaded successfully! (Import ID: " + $importId + ")") -ForegroundColor Green
+        if (-not $Quiet) {
+            $gtDisplay = if ($GroupTag) { $GroupTag } else { '(None)' }
+            $usrDisplay = if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' }
+            $syncDisplay = if ($WaitForSync) { "2-Stage Poll ($TimeoutMinutes min max)" } else { 'Async Queue Only' }
+            Write-Host ("  [OK] Device uploaded successfully! (Import ID: " + $importId + ")") -ForegroundColor Green
+            Write-Host ""
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host "  | AUTOPILOT CLOUD REGISTRATION RECEIPT                    [UPLOADED]   |" -ForegroundColor Cyan
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host ("  | Serial Number : {0,-52} |" -f $deviceInfo.SerialNumber) -ForegroundColor White
+            Write-Host ("  | Import ID     : {0,-52} |" -f $importId) -ForegroundColor Gray
+            Write-Host ("  | Group Tag     : {0,-52} |" -f $gtDisplay) -ForegroundColor Cyan
+            Write-Host ("  | Assigned User : {0,-52} |" -f $usrDisplay) -ForegroundColor Gray
+            Write-Host ("  | OA3 Payload   : {0,-52} |" -f "$hashLen Base64 chars (OA3 Verified)") -ForegroundColor Green
+            Write-Host ("  | Sync Mode     : {0,-52} |" -f $syncDisplay) -ForegroundColor Gray
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host ""
+        }
+        if ($CopyReceipt) {
+            try {
+                $mdReceipt = @(
+                    "### Autopilot Cloud Registration Receipt",
+                    "| Field | Value |",
+                    "| :--- | :--- |",
+                    "| **Serial Number** | ``$($deviceInfo.SerialNumber)`` |",
+                    "| **Import Queue ID** | ``$importId`` |",
+                    "| **Group Tag** | ``$(if ($GroupTag) { $GroupTag } else { '(None)' })`` |",
+                    "| **Assigned User** | ``$(if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' })`` |",
+                    "| **OA3 Hash Length** | $hashLen chars |",
+                    "| **Uploaded At (UTC)** | $((Get-Date).ToUniversalTime().ToString('o')) |"
+                ) -join "`r`n"
+                Set-Clipboard -Value $mdReceipt -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied Markdown Cloud Registration Receipt to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
         Write-IntuneLog -Message "Hardware hash uploaded to Graph" -Level Info -Component "AutopilotFast" -CustomData @{
             ImportId     = $importId
             SerialNumber = $deviceInfo.SerialNumber
@@ -145,8 +207,10 @@ function Register-AutopilotDevice {
     catch {
         Write-Error ("Failed to upload device to Microsoft Graph: " + $_.Exception.Message)
         if ($FallbackToUsb) {
-            Write-Host "  [+] Saving backup to USB drive..." -ForegroundColor Yellow
-            Export-AutopilotCsv -AutoDetectUsb -GroupTag $GroupTag -AssignedUser $AssignedUser | Out-Null
+            if (-not $Quiet) {
+                Write-Host "  [+] Saving backup to USB drive..." -ForegroundColor Yellow
+            }
+            Export-AutopilotCsv -AutoDetectUsb -GroupTag $GroupTag -AssignedUser $AssignedUser -Quiet:$Quiet | Out-Null
         }
         throw $_
     }

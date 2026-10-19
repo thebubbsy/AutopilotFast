@@ -21,12 +21,15 @@ function Set-AutopilotGroupTag {
         [switch]$Quiet,
 
         [Parameter()]
+        [switch]$CopyReceipt,
+
+        [Parameter()]
         [switch]$PassThru
     )
 
     $token = $script:AutopilotAccessToken
     if (-not $token) {
-        $token = Connect-AutopilotGraph
+        $token = Connect-AutopilotGraph -Quiet:$Quiet
     }
 
     $authHeader = @{
@@ -57,8 +60,9 @@ function Set-AutopilotGroupTag {
         Write-Host "  [+] Updating GroupTag for Device ID [$targetId] -> '$GroupTag'..." -ForegroundColor Cyan
     }
     Invoke-ResilientGraphRest -Uri $updateUri -Method POST -Headers $authHeader -Body $body | Out-Null
+    $transitionText = if ($prevGroupTag) { "'$prevGroupTag' -> '$GroupTag'" } else { "-> '$GroupTag'" }
+    $updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
     if (-not $Quiet) {
-        $transitionText = if ($prevGroupTag) { "'$prevGroupTag' -> '$GroupTag'" } else { "-> '$GroupTag'" }
         Write-Host ""
         Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
         Write-Host "  | AUTOPILOT GROUP TAG UPDATE RECEIPT                       [UPDATED]   |" -ForegroundColor Green
@@ -72,13 +76,31 @@ function Set-AutopilotGroupTag {
         Write-Host ""
     }
 
+    if ($CopyReceipt) {
+        try {
+            $md = @(
+                "### Autopilot GroupTag Update Receipt",
+                "| Field | Value |",
+                "| :--- | :--- |",
+                "| **Serial Number** | ``$(if ($SerialNumber) { $SerialNumber } else { 'N/A' })`` |",
+                "| **Device ID** | ``$targetId`` |",
+                "| **Transition** | ``$transitionText`` |",
+                "| **Updated At (UTC)** | ``$updatedUtc`` |"
+            ) -join "`r`n"
+            Set-Clipboard -Value $md -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied GroupTag Update Receipt (Markdown) to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
     if ($PassThru) {
         return [PSCustomObject]@{
             DeviceId         = $targetId
             SerialNumber     = $SerialNumber
             PreviousGroupTag = $prevGroupTag
             GroupTag         = $GroupTag
-            UpdatedAtUtc     = (Get-Date).ToUniversalTime().ToString('o')
+            UpdatedAtUtc     = $updatedUtc
         }
     }
 }
