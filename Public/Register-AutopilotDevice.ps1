@@ -45,6 +45,12 @@ function Register-AutopilotDevice {
         [switch]$CopyReceipt,
 
         [Parameter()]
+        [switch]$CopyJson,
+
+        [Parameter()]
+        [switch]$CopyTsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -162,6 +168,7 @@ function Register-AutopilotDevice {
     try {
         $importResult = Invoke-ResilientGraphRest -Uri $uri -Method POST -Headers $authHeader -Body $payload
         $importId = $importResult.id
+        $uploadedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
         if (-not $Quiet) {
             $gtDisplay = if ($GroupTag) { $GroupTag } else { '(None)' }
             $usrDisplay = if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' }
@@ -191,11 +198,39 @@ function Register-AutopilotDevice {
                     "| **Group Tag** | ``$(if ($GroupTag) { $GroupTag } else { '(None)' })`` |",
                     "| **Assigned User** | ``$(if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' })`` |",
                     "| **OA3 Hash Length** | $hashLen chars |",
-                    "| **Uploaded At (UTC)** | $((Get-Date).ToUniversalTime().ToString('o')) |"
+                    "| **Uploaded At (UTC)** | $uploadedAtUtc |"
                 ) -join "`r`n"
                 Set-Clipboard -Value $mdReceipt -ErrorAction Stop
                 if (-not $Quiet) {
                     Write-Host "  [CLIPBOARD] Copied Markdown Cloud Registration Receipt to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyJson) {
+            try {
+                $jsonReceipt = [PSCustomObject]@{
+                    SerialNumber  = $deviceInfo.SerialNumber
+                    ImportQueueId = $importId
+                    GroupTag      = if ($GroupTag) { $GroupTag } else { '(None)' }
+                    AssignedUser  = if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' }
+                    Oa3HashLength = $hashLen
+                    UploadedAtUtc = $uploadedAtUtc
+                } | ConvertTo-Json -Depth 4
+                Set-Clipboard -Value $jsonReceipt -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied JSON Cloud Registration Receipt to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyTsv) {
+            try {
+                $tsvReceipt = @(
+                    "SerialNumber`tImportQueueId`tGroupTag`tAssignedUser`tOa3HashLength`tUploadedAtUtc",
+                    "$($deviceInfo.SerialNumber)`t$importId`t$(if ($GroupTag) { $GroupTag } else { '(None)' })`t$(if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' })`t$hashLen`t$uploadedAtUtc"
+                ) -join "`r`n"
+                Set-Clipboard -Value $tsvReceipt -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied TSV Cloud Registration Receipt to clipboard." -ForegroundColor Green
                 }
             } catch { }
         }

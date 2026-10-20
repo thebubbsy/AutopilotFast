@@ -24,6 +24,12 @@ function Set-AutopilotGroupTag {
         [switch]$CopyReceipt,
 
         [Parameter()]
+        [switch]$CopyJson,
+
+        [Parameter()]
+        [switch]$CopyTsv,
+
+        [Parameter()]
         [switch]$PassThru
     )
 
@@ -90,6 +96,34 @@ function Set-AutopilotGroupTag {
             Set-Clipboard -Value $md -ErrorAction Stop
             if (-not $Quiet) {
                 Write-Host "  [CLIPBOARD] Copied GroupTag Update Receipt (Markdown) to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+    if ($CopyJson) {
+        try {
+            $jsonReceipt = [PSCustomObject]@{
+                DeviceId         = $targetId
+                SerialNumber     = if ($SerialNumber) { $SerialNumber } else { 'N/A' }
+                PreviousGroupTag = $prevGroupTag
+                GroupTag         = $GroupTag
+                Transition       = $transitionText
+                UpdatedAtUtc     = $updatedUtc
+            } | ConvertTo-Json -Depth 4
+            Set-Clipboard -Value $jsonReceipt -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied GroupTag Update Receipt (JSON) to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+    if ($CopyTsv) {
+        try {
+            $tsvReceipt = @(
+                "DeviceId`tSerialNumber`tPreviousGroupTag`tGroupTag`tUpdatedAtUtc",
+                "$targetId`t$(if ($SerialNumber) { $SerialNumber } else { 'N/A' })`t$prevGroupTag`t$GroupTag`t$updatedUtc"
+            ) -join "`r`n"
+            Set-Clipboard -Value $tsvReceipt -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied GroupTag Update Receipt (TSV) to clipboard." -ForegroundColor Green
             }
         } catch { }
     }
