@@ -11,6 +11,12 @@ function Test-AutopilotReadiness {
         [switch]$CopyReport,
 
         [Parameter()]
+        [switch]$CopyJson,
+
+        [Parameter()]
+        [switch]$CopyTsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -147,6 +153,37 @@ function Test-AutopilotReadiness {
             Set-Clipboard -Value $mdReport -ErrorAction Stop
             if (-not $Quiet) {
                 Write-Host "  [CLIPBOARD] Copied Markdown Readiness Report to clipboard.`n" -ForegroundColor Cyan
+            }
+        } catch {
+            Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"
+        }
+    }
+
+    if ($CopyJson) {
+        try {
+            $jsonPayload = $readiness | ConvertTo-Json -Depth 4
+            Set-Clipboard -Value $jsonPayload -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied Readiness Posture JSON to clipboard.`n" -ForegroundColor Cyan
+            }
+        } catch {
+            Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"
+        }
+    }
+
+    if ($CopyTsv) {
+        try {
+            $tsvLines = @(
+                "Check`tStatus`tDetails",
+                "Overall Verdict`t$($readiness.IsCompliant)`t$pct% ($($readiness.ChecksPassed)/$($readiness.TotalChecks) passed)",
+                "TPM 2.0`t$($readiness.TpmReady)`tVersion: $($readiness.TpmVersion)",
+                "Secure Boot`t$($readiness.SecureBootOn)`tUEFI Mode: $($readiness.UefiMode)",
+                "Cloud Network`t$($readiness.NetworkHealthy)`t$($net.StagesPassed)/$($net.TotalStages) Stages Passed",
+                "Windows OS Build`t$build`t$($readiness.OsBuild)"
+            ) -join [Environment]::NewLine
+            Set-Clipboard -Value $tsvLines -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied Readiness Posture TSV rows to clipboard.`n" -ForegroundColor Cyan
             }
         } catch {
             Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"
