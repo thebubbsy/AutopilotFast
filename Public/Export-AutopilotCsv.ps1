@@ -48,6 +48,12 @@ function Export-AutopilotCsv {
         [switch]$CopyTsv,
 
         [Parameter()]
+        [switch]$CopyJson,
+
+        [Parameter()]
+        [switch]$CopyCsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -135,6 +141,41 @@ function Export-AutopilotCsv {
             try { Set-Clipboard -Value ($tsvLines -join [Environment]::NewLine) -ErrorAction SilentlyContinue } catch { }
         }
 
+        if ($CopyCsv) {
+            $csvLines = [System.Collections.Generic.List[string]]::new()
+            $csvLines.Add($header)
+            foreach ($item in $items) {
+                $gt = if ($item.GroupTag) { $item.GroupTag } else { $GroupTag }
+                $au = if ($item.AssignedUser) { $item.AssignedUser } else { $AssignedUser }
+                $csvLines.Add("$($item.SerialNumber),$($item.WindowsProductID),$($item.HardwareHash),$gt,$au")
+            }
+            try { Set-Clipboard -Value ($csvLines -join [Environment]::NewLine) -ErrorAction SilentlyContinue } catch { }
+        }
+
+        if ($CopyJson) {
+            $jsonPayload = [ordered]@{
+                DestinationCsv = $fileItem.FullName
+                StorageMedia   = $storageMedia
+                WriteMode      = $writeMode
+                BatchCount     = $items.Count
+                TotalCsvRows   = $totalRecords
+                FileSizeKb     = $sizeKb
+                LeadSerial     = $firstSerial
+                GroupTag       = $effectiveTag
+                Devices        = @(
+                    foreach ($item in $items) {
+                        [ordered]@{
+                            SerialNumber     = $item.SerialNumber
+                            WindowsProductID = $item.WindowsProductID
+                            GroupTag         = if ($item.GroupTag) { $item.GroupTag } else { $GroupTag }
+                            AssignedUser     = if ($item.AssignedUser) { $item.AssignedUser } else { $AssignedUser }
+                        }
+                    }
+                )
+            } | ConvertTo-Json -Depth 5
+            try { Set-Clipboard -Value $jsonPayload -ErrorAction SilentlyContinue } catch { }
+        }
+
         if ($CopyReceipt) {
             $mdLines = @(
                 "### Autopilot CSV Harvest Receipt",
@@ -163,6 +204,12 @@ function Export-AutopilotCsv {
             }
             if ($CopyTsv) {
                 Write-Host "  | [CLIPBOARD] Tab-separated device rows copied to system clipboard.    |" -ForegroundColor Green
+            }
+            if ($CopyCsv) {
+                Write-Host "  | [CLIPBOARD] RFC-4180 Autopilot CSV payload copied to clipboard.      |" -ForegroundColor Green
+            }
+            if ($CopyJson) {
+                Write-Host "  | [CLIPBOARD] Structured JSON harvest receipt copied to clipboard.     |" -ForegroundColor Green
             }
             if ($CopyReceipt) {
                 Write-Host "  | [CLIPBOARD] Markdown harvest receipt table copied to clipboard.      |" -ForegroundColor Green

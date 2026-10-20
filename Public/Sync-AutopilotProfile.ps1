@@ -61,6 +61,12 @@ function Sync-AutopilotProfile {
         [switch]$CopyReceipt,
 
         [Parameter()]
+        [switch]$CopyJson,
+
+        [Parameter()]
+        [switch]$CopyTsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -106,9 +112,9 @@ function Sync-AutopilotProfile {
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host ""
         }
+        $targetLabel = if ($SerialNumber) { "SN: $SerialNumber" } elseif ($DeviceId) { "ID: $DeviceId" } else { "Tenant-Wide" }
         if ($CopyReceipt) {
             try {
-                $targetLabel = if ($SerialNumber) { "SN: $SerialNumber" } elseif ($DeviceId) { "ID: $DeviceId" } else { "Tenant-Wide" }
                 $mdSync = @(
                     "### Autopilot Tenant Sync Receipt"
                     ""
@@ -122,6 +128,29 @@ function Sync-AutopilotProfile {
                 Set-Clipboard -Value $mdSync -ErrorAction Stop
                 if (-not $Quiet) {
                     Write-Host "  [CLIPBOARD] Autopilot Tenant Sync Receipt (Markdown) copied to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyJson) {
+            try {
+                $jsonSync = [ordered]@{
+                    TriggeredSync = [bool]$TriggerTenantSync
+                    Target        = $targetLabel
+                    Mode          = "ImmediateReturn"
+                    Status        = "SyncTriggered"
+                } | ConvertTo-Json -Depth 4
+                Set-Clipboard -Value $jsonSync -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Autopilot Tenant Sync Receipt (JSON) copied to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyTsv) {
+            try {
+                $tsvSync = "TriggeredSync`tTarget`tMode`tStatus`r`n$([bool]$TriggerTenantSync)`t$targetLabel`tImmediateReturn`tSyncTriggered"
+                Set-Clipboard -Value $tsvSync -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Autopilot Tenant Sync Receipt (TSV) copied to clipboard." -ForegroundColor Green
                 }
             } catch { }
         }
@@ -202,9 +231,9 @@ function Sync-AutopilotProfile {
                         Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
                         Write-Host ""
                     }
+                    $gtVal = if ($targetDevice.groupTag) { $targetDevice.groupTag } else { '<none>' }
                     if ($CopyReceipt) {
                         try {
-                            $gtVal = if ($targetDevice.groupTag) { $targetDevice.groupTag } else { '<none>' }
                             $mdAssigned = @(
                                 "### Autopilot Profile Assignment Receipt"
                                 ""
@@ -221,6 +250,35 @@ function Sync-AutopilotProfile {
                             Set-Clipboard -Value $mdAssigned -ErrorAction Stop
                             if (-not $Quiet) {
                                 Write-Host "  [CLIPBOARD] Autopilot Profile Assignment Receipt (Markdown) copied to clipboard." -ForegroundColor Green
+                            }
+                        } catch { }
+                    }
+                    if ($CopyJson) {
+                        try {
+                            $jsonAssigned = [ordered]@{
+                                IsAssigned               = $true
+                                SerialNumber             = $targetDevice.serialNumber
+                                DeviceId                 = $targetDevice.id
+                                GroupTag                 = $gtVal
+                                AssignedProfileName      = $profileName
+                                AssignmentStatus         = $assignStatus
+                                AssignmentDetailedStatus = $detailedStatus
+                                AssignedDateTime         = $assignedTime
+                                ElapsedSeconds           = $elapsedSec
+                                Attempts                 = $attempt
+                            } | ConvertTo-Json -Depth 4
+                            Set-Clipboard -Value $jsonAssigned -ErrorAction Stop
+                            if (-not $Quiet) {
+                                Write-Host "  [CLIPBOARD] Autopilot Profile Assignment Receipt (JSON) copied to clipboard." -ForegroundColor Green
+                            }
+                        } catch { }
+                    }
+                    if ($CopyTsv) {
+                        try {
+                            $tsvAssigned = "SerialNumber`tDeviceId`tGroupTag`tProfileName`tAssignmentStatus`tAssignedAt`tAttempts`tElapsedSec`r`n$($targetDevice.serialNumber)`t$($targetDevice.id)`t$gtVal`t$profileName`t$assignStatus`t$assignedTime`t$attempt`t$elapsedSec"
+                            Set-Clipboard -Value $tsvAssigned -ErrorAction Stop
+                            if (-not $Quiet) {
+                                Write-Host "  [CLIPBOARD] Autopilot Profile Assignment Receipt (TSV) copied to clipboard." -ForegroundColor Green
                             }
                         } catch { }
                     }
