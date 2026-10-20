@@ -25,6 +25,12 @@ function Get-AutopilotHash {
         [switch]$CopyToClipboard,
 
         [Parameter()]
+        [switch]$CopyReceipt,
+
+        [Parameter()]
+        [switch]$CopyJson,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -268,6 +274,43 @@ function Get-AutopilotHash {
             Set-Clipboard -Value $csvRow -ErrorAction Stop
             if (-not $Quiet) {
                 Write-Host "  [CLIPBOARD] Autopilot CSV row copied to clipboard ($($hardwareHash.Length) chars)." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
+    if ($CopyReceipt) {
+        try {
+            $oa3StatusText = if ($result.OA3MagicVerified) { "OA3\0 (0x4F413300) [VERIFIED]" } else { "UNVERIFIED ($statusMessage)" }
+            $privStatusText = if ($isAdmin) { "Elevated (Admin/SYSTEM)" } else { "Standard User" }
+            $gtText = if ($GroupTag) { $GroupTag } else { "<none>" }
+            $mdReceipt = @(
+                "### Autopilot OA3 Hardware Identity Verification Receipt"
+                ""
+                "| Field | Value |"
+                "| :--- | :--- |"
+                "| **Serial Number** | ``$serial`` |"
+                "| **SMBIOS UUID** | ``$uuid`` |"
+                "| **Manufacturer / Model** | $manufacturer / $model |"
+                "| **Windows Product ID** | ``$pkid`` |"
+                "| **OA3 Header** | ``$oa3StatusText`` |"
+                "| **Hash Payload** | $($result.HashLengthBytes) Base64 chars ($decodedLen binary bytes) |"
+                "| **Group Tag** | ``$gtText`` |"
+                "| **Privilege** | $privStatusText |"
+                "| **Captured (ISO)** | ``$($result.CaptureTimestamp)`` |"
+            ) -join "`r`n"
+            Set-Clipboard -Value $mdReceipt -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] OA3 Hardware Identity Receipt (Markdown) copied to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
+    if ($CopyJson) {
+        try {
+            $jsonPayload = $result | ConvertTo-Json -Depth 5
+            Set-Clipboard -Value $jsonPayload -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Autopilot Hardware Identity JSON copied to clipboard." -ForegroundColor Green
             }
         } catch { }
     }

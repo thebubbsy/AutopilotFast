@@ -58,6 +58,9 @@ function Sync-AutopilotProfile {
         [switch]$Reboot,
 
         [Parameter()]
+        [switch]$CopyReceipt,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -102,6 +105,25 @@ function Sync-AutopilotProfile {
             Write-Host "  | Mode        : Immediate Return (No Profile Polling)                  |" -ForegroundColor DarkGray
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host ""
+        }
+        if ($CopyReceipt) {
+            try {
+                $targetLabel = if ($SerialNumber) { "SN: $SerialNumber" } elseif ($DeviceId) { "ID: $DeviceId" } else { "Tenant-Wide" }
+                $mdSync = @(
+                    "### Autopilot Tenant Sync Receipt"
+                    ""
+                    "| Field | Value |"
+                    "| :--- | :--- |"
+                    "| **Tenant Sync** | $(if ($TriggerTenantSync) { 'TRIGGERED (POST /windowsAutopilotSettings/sync)' } else { 'SKIPPED' }) |"
+                    "| **Target** | ``$targetLabel`` |"
+                    "| **Mode** | Immediate Return (No Profile Polling) |"
+                    "| **Status** | ``SyncTriggered`` |"
+                ) -join "`r`n"
+                Set-Clipboard -Value $mdSync -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Autopilot Tenant Sync Receipt (Markdown) copied to clipboard." -ForegroundColor Green
+                }
+            } catch { }
         }
         return [PSCustomObject]@{
             TriggeredSync = [bool]$TriggerTenantSync
@@ -179,6 +201,28 @@ function Sync-AutopilotProfile {
                         Write-Host ("  | Telemetry     : {0,-52} |" -f "$attempt poll attempt(s) in ${elapsedSec}s") -ForegroundColor DarkGray
                         Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
                         Write-Host ""
+                    }
+                    if ($CopyReceipt) {
+                        try {
+                            $gtVal = if ($targetDevice.groupTag) { $targetDevice.groupTag } else { '<none>' }
+                            $mdAssigned = @(
+                                "### Autopilot Profile Assignment Receipt"
+                                ""
+                                "| Field | Value |"
+                                "| :--- | :--- |"
+                                "| **Serial Number** | ``$($targetDevice.serialNumber)`` |"
+                                "| **Device ID** | ``$($targetDevice.id)`` |"
+                                "| **Group Tag** | ``$gtVal`` |"
+                                "| **Profile Name** | **$profileName** |"
+                                "| **Assignment Status** | ``$assignStatus`` |"
+                                "| **Assigned At** | ``$assignedTime`` |"
+                                "| **Telemetry** | $attempt poll attempt(s) in ${elapsedSec}s |"
+                            ) -join "`r`n"
+                            Set-Clipboard -Value $mdAssigned -ErrorAction Stop
+                            if (-not $Quiet) {
+                                Write-Host "  [CLIPBOARD] Autopilot Profile Assignment Receipt (Markdown) copied to clipboard." -ForegroundColor Green
+                            }
+                        } catch { }
                     }
                     Write-IntuneLog -Message "Profile successfully assigned to device" -Level Info -Component "AutopilotFast" -CustomData @{
                         SerialNumber                      = $SerialNumber
