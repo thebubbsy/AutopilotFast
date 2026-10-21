@@ -31,6 +31,9 @@ function Get-AutopilotHash {
         [switch]$CopyJson,
 
         [Parameter()]
+        [switch]$CopyTsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -311,6 +314,17 @@ function Get-AutopilotHash {
             Set-Clipboard -Value $jsonPayload -ErrorAction Stop
             if (-not $Quiet) {
                 Write-Host "  [CLIPBOARD] Autopilot Hardware Identity JSON copied to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
+    if ($CopyTsv) {
+        try {
+            $tsvHeader = "SerialNumber`tSmbiosUuid`tManufacturer`tModel`tWindowsProductID`tGroupTag`tOA3MagicVerified`tDecodedBytes`tHashLengthBytes`tIsElevated`tCaptureTimestamp"
+            $tsvRow = "$serial`t$uuid`t$manufacturer`t$model`t$pkid`t$GroupTag`t$($result.OA3MagicVerified)`t$decodedLen`t$($result.HashLengthBytes)`t$isAdmin`t$($result.CaptureTimestamp)"
+            Set-Clipboard -Value ("$tsvHeader`r`n$tsvRow") -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Autopilot Hardware Identity TSV copied to clipboard." -ForegroundColor Green
             }
         } catch { }
     }

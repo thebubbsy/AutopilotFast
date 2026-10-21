@@ -29,6 +29,12 @@ function Connect-AutopilotGraph {
         [switch]$CopyToken,
 
         [Parameter()]
+        [switch]$CopyJson,
+
+        [Parameter()]
+        [switch]$CopyTsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -75,6 +81,39 @@ function Connect-AutopilotGraph {
                 Set-Clipboard -Value $mdReceipt -ErrorAction Stop
                 if (-not $Quiet) {
                     Write-Host "  [CLIPBOARD] Copied Markdown Graph Session Receipt to clipboard." -ForegroundColor Cyan
+                }
+            } catch {
+                Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"
+            }
+        }
+
+        if ($CopyJson) {
+            $jsonReceipt = [PSCustomObject]@{
+                AuthMode      = $authMode
+                TenantId      = $TenantId
+                ClientId      = $ClientId
+                Scopes        = @($Scopes)
+                TokenLength   = $tokenLen
+                TokenPreview  = $tokenPreview
+                ConnectedAtUtc = [DateTime]::UtcNow.ToString('o')
+            } | ConvertTo-Json -Depth 4
+            try {
+                Set-Clipboard -Value $jsonReceipt -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied Graph Session Receipt JSON to clipboard." -ForegroundColor Cyan
+                }
+            } catch {
+                Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"
+            }
+        }
+
+        if ($CopyTsv) {
+            $tsvHeader = "AuthMode`tTenantId`tClientId`tScopes`tTokenLength`tConnectedAtUtc"
+            $tsvRow = "$authMode`t$TenantId`t$ClientId`t$scopeSummary`t$tokenLen`t$([DateTime]::UtcNow.ToString('o'))"
+            try {
+                Set-Clipboard -Value ("$tsvHeader`r`n$tsvRow") -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied Graph Session Receipt TSV to clipboard." -ForegroundColor Cyan
                 }
             } catch {
                 Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"
