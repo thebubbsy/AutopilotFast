@@ -34,6 +34,12 @@ function Get-AutopilotHash {
         [switch]$CopyTsv,
 
         [Parameter()]
+        [switch]$CopyHtml,
+
+        [Parameter()]
+        [switch]$CopyCsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -325,6 +331,45 @@ function Get-AutopilotHash {
             Set-Clipboard -Value ("$tsvHeader`r`n$tsvRow") -ErrorAction Stop
             if (-not $Quiet) {
                 Write-Host "  [CLIPBOARD] Autopilot Hardware Identity TSV copied to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
+    if ($CopyHtml) {
+        try {
+            $oa3StatusText = if ($result.OA3MagicVerified) { "OA3\0 (0x4F413300) [VERIFIED]" } else { "UNVERIFIED ($statusMessage)" }
+            $gtText = if ($GroupTag) { $GroupTag } else { "<none>" }
+            $badgeColor = if ($result.OA3MagicVerified) { '#166534' } else { '#854d0e' }
+            $badgeFg = if ($result.OA3MagicVerified) { '#4ade80' } else { '#facc15' }
+            $htmlCard = @(
+                "<div style=`"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:640px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:8px;padding:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);`">",
+                "  <div style=`"display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:12px;`">",
+                "    <h3 style=`"margin:0;color:#38bdf8;font-size:16px;font-weight:600;`">Autopilot OA3 Hardware Identity Card</h3>",
+                "    <span style=`"background:$badgeColor;color:$badgeFg;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;`">$oa3StatusText</span>",
+                "  </div>",
+                "  <table style=`"width:100%;border-collapse:collapse;font-size:13px;`">",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Serial Number</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;`">$serial</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Manufacturer / Model</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">$manufacturer / $model</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Group Tag</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">$gtText</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Hash Payload</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">$($result.HashLengthBytes) Base64 chars ($decodedLen binary bytes)</td></tr>",
+                "    <tr><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Captured At</td><td style=`"padding:6px 0;text-align:right;color:#94a3b8;font-size:12px;`">$($result.CaptureTimestamp)</td></tr>",
+                "  </table>",
+                "</div>"
+            ) -join [Environment]::NewLine
+            Set-Clipboard -Value $htmlCard -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied OA3 Hardware Identity HTML Card to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
+    if ($CopyCsv) {
+        try {
+            $csvHeader = "SerialNumber,SmbiosUuid,Manufacturer,Model,WindowsProductID,GroupTag,OA3MagicVerified,DecodedBytes,HashLengthBytes,IsElevated,CaptureTimestamp"
+            $csvRow = "`"$serial`",`"$uuid`",`"$manufacturer`",`"$model`",`"$pkid`",`"$GroupTag`",$($result.OA3MagicVerified),$decodedLen,$($result.HashLengthBytes),$isAdmin,`"$($result.CaptureTimestamp)`""
+            Set-Clipboard -Value ("$csvHeader`r`n$csvRow") -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied Autopilot Hardware Identity CSV rows to clipboard." -ForegroundColor Green
             }
         } catch { }
     }

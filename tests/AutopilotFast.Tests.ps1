@@ -533,3 +533,35 @@ Describe 'Export-AutopilotCsv Format & Structure' {
         }
     }
 }
+
+Describe 'AutopilotFast Readiness & Identity UI Enhancements' {
+    AfterEach { Clear-AutopilotMockHardwareHash }
+
+    Context 'Test-AutopilotReadiness HTML & CSV Export' {
+        It 'Executes Test-AutopilotReadiness with -CopyHtml and -CopyCsv without error' {
+            Mock Test-StagedNetwork {
+                return [PSCustomObject]@{
+                    IsFullyReady = $true
+                    StagesPassed = 7
+                    TotalStages  = 7
+                    Details      = @()
+                }
+            } -ModuleName AutopilotFast
+
+            $res = Test-AutopilotReadiness -CopyHtml -CopyCsv -Quiet
+            $res | Should -Not -BeNullOrEmpty
+            $res.TotalChecks | Should -Be 5
+        }
+    }
+
+    Context 'Get-AutopilotHash HTML & CSV Export' {
+        It 'Supports -CopyHtml and -CopyCsv clipboard switches' {
+            $valid4k = New-AutopilotSyntheticHardwareHash -LengthBytes 4096
+            Set-AutopilotMockHardwareHash -Hash $valid4k
+
+            $res = Get-AutopilotHash -CopyHtml -CopyCsv -Quiet
+            $res | Should -Not -BeNullOrEmpty
+            $res.OA3MagicVerified | Should -Be $true
+        }
+    }
+}
