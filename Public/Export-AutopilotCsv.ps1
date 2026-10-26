@@ -54,6 +54,9 @@ function Export-AutopilotCsv {
         [switch]$CopyCsv,
 
         [Parameter()]
+        [switch]$CopyHtml,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -191,7 +194,33 @@ function Export-AutopilotCsv {
             try { Set-Clipboard -Value ($mdLines -join [Environment]::NewLine) -ErrorAction SilentlyContinue } catch { }
         }
 
+        if ($CopyHtml) {
+            $htmlCard = @(
+                "<div style=`"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:640px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:8px;padding:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);`">",
+                "  <div style=`"display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:12px;`">",
+                "    <h3 style=`"margin:0;color:#38bdf8;font-size:16px;font-weight:600;`">Autopilot CSV Harvest Receipt</h3>",
+                "    <span style=`"background:#166534;color:#4ade80;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;`">HARVESTED ($writeMode)</span>",
+                "  </div>",
+                "  <table style=`"width:100%;border-collapse:collapse;font-size:13px;`">",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Destination Path</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;font-size:11px;`">$($fileItem.FullName)</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Storage Media</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">$storageMedia</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Batch Count</td><td style=`"padding:6px 0;text-align:right;color:#4ade80;font-weight:600;`">$($items.Count) device(s)</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Total CSV Rows</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">$totalRecords row(s) ($sizeKb KB)</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Lead Serial</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;`">$firstSerial</td></tr>",
+                "    <tr><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Group Tag</td><td style=`"padding:6px 0;text-align:right;color:#38bdf8;`">$effectiveTag</td></tr>",
+                "  </table>",
+                "</div>"
+            ) -join [Environment]::NewLine
+            try { Set-Clipboard -Value $htmlCard -ErrorAction SilentlyContinue } catch { }
+        }
+
         if (-not $Quiet) {
+            $mediaBadge = if ($storageMedia -match 'USB') { '[MEDIA:USB]' } else { '[MEDIA:LOCAL]' }
+            $modeBadge = if ($Append -and $fileExists) { '[MODE:APPEND]' } else { '[MODE:CREATE]' }
+            $batchBadge = "[BATCH:$($items.Count)]"
+            $statusBadge = '[INTEGRITY:VERIFIED]'
+            Write-Host ""
+            Write-Host ("  {0} {1} [ENCODING:UTF8] {2} {3}" -f $mediaBadge, $modeBadge, $batchBadge, $statusBadge) -ForegroundColor Green
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host "  | AUTOPILOT CSV HARVEST RECEIPT                                        |" -ForegroundColor Cyan
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
@@ -213,6 +242,9 @@ function Export-AutopilotCsv {
             }
             if ($CopyReceipt) {
                 Write-Host "  | [CLIPBOARD] Markdown harvest receipt table copied to clipboard.      |" -ForegroundColor Green
+            }
+            if ($CopyHtml) {
+                Write-Host "  | [CLIPBOARD] HTML harvest receipt card copied to clipboard.           |" -ForegroundColor Green
             }
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
         }

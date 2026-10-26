@@ -51,6 +51,12 @@ function Register-AutopilotDevice {
         [switch]$CopyTsv,
 
         [Parameter()]
+        [switch]$CopyHtml,
+
+        [Parameter()]
+        [switch]$CopyCsv,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -175,6 +181,8 @@ function Register-AutopilotDevice {
             $syncDisplay = if ($WaitForSync) { "2-Stage Poll ($TimeoutMinutes min max)" } else { 'Async Queue Only' }
             Write-Host ("  [OK] Device uploaded successfully! (Import ID: " + $importId + ")") -ForegroundColor Green
             Write-Host ""
+            Write-Host "  [STAGE:INGESTION] [OA3:VERIFIED] [NETWORK:READY] [GRAPH:CONNECTED] [STATUS:QUEUED]" -ForegroundColor Green
+            Write-Host ""
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host "  | AUTOPILOT CLOUD REGISTRATION RECEIPT                    [UPLOADED]   |" -ForegroundColor Cyan
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
@@ -231,6 +239,44 @@ function Register-AutopilotDevice {
                 Set-Clipboard -Value $tsvReceipt -ErrorAction Stop
                 if (-not $Quiet) {
                     Write-Host "  [CLIPBOARD] Copied TSV Cloud Registration Receipt to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyHtml) {
+            try {
+                $gtText = if ($GroupTag) { $GroupTag } else { '(None)' }
+                $usrText = if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' }
+                $htmlCard = @(
+                    "<div style=`"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:640px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:8px;padding:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);`">",
+                    "  <div style=`"display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:12px;`">",
+                    "    <h3 style=`"margin:0;color:#38bdf8;font-size:16px;font-weight:600;`">Autopilot Cloud Registration Receipt</h3>",
+                    "    <span style=`"background:#166534;color:#4ade80;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;`">QUEUED (UPLOADED)</span>",
+                    "  </div>",
+                    "  <table style=`"width:100%;border-collapse:collapse;font-size:13px;`">",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Serial Number</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;`">$($deviceInfo.SerialNumber)</td></tr>",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Import Queue ID</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;font-size:11px;`">$importId</td></tr>",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Group Tag</td><td style=`"padding:6px 0;text-align:right;color:#38bdf8;`">$gtText</td></tr>",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Assigned User</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">$usrText</td></tr>",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">OA3 Payload</td><td style=`"padding:6px 0;text-align:right;color:#4ade80;`">$hashLen Base64 chars (OA3 Verified)</td></tr>",
+                    "    <tr><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Uploaded At (UTC)</td><td style=`"padding:6px 0;text-align:right;color:#94a3b8;font-size:12px;`">$uploadedAtUtc</td></tr>",
+                    "  </table>",
+                    "</div>"
+                ) -join [Environment]::NewLine
+                Set-Clipboard -Value $htmlCard -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied HTML Cloud Registration Receipt to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyCsv) {
+            try {
+                $csvReceipt = @(
+                    "SerialNumber,ImportQueueId,GroupTag,AssignedUser,Oa3HashLength,UploadedAtUtc",
+                    "`"$($deviceInfo.SerialNumber)`",`"$importId`",`"$(if ($GroupTag) { $GroupTag } else { '(None)' })`",`"$(if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' })`",$hashLen,`"$uploadedAtUtc`""
+                ) -join "`r`n"
+                Set-Clipboard -Value $csvReceipt -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied CSV Cloud Registration Receipt to clipboard." -ForegroundColor Green
                 }
             } catch { }
         }

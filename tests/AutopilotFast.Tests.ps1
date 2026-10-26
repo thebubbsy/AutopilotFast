@@ -564,4 +564,25 @@ Describe 'AutopilotFast Readiness & Identity UI Enhancements' {
             $res.OA3MagicVerified | Should -Be $true
         }
     }
+
+    Context 'Export-AutopilotCsv & Register-AutopilotDevice HTML & CSV Export' {
+        It 'Supports -CopyHtml and -CopyCsv on Export-AutopilotCsv' {
+            $valid4k = New-AutopilotSyntheticHardwareHash -LengthBytes 4096
+            Set-AutopilotMockHardwareHash -Hash $valid4k
+            $tempCsv = Join-Path ([System.IO.Path]::GetTempPath()) "AutoTest_$([System.Guid]::NewGuid()).csv"
+            try {
+                $file = Export-AutopilotCsv -Path $tempCsv -GroupTag 'TEST-HTML' -CopyHtml -CopyCsv -Quiet
+                $file | Should -Not -BeNullOrEmpty
+                Test-Path $tempCsv | Should -BeTrue
+            } finally {
+                if (Test-Path $tempCsv) { Remove-Item $tempCsv -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        It 'Exposes -CopyHtml and -CopyCsv on Register-AutopilotDevice' {
+            $cmd = Get-Command Register-AutopilotDevice
+            $cmd.Parameters.ContainsKey('CopyHtml') | Should -BeTrue
+            $cmd.Parameters.ContainsKey('CopyCsv') | Should -BeTrue
+        }
+    }
 }
