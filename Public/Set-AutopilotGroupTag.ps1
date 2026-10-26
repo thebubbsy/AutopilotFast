@@ -30,6 +30,12 @@ function Set-AutopilotGroupTag {
         [switch]$CopyTsv,
 
         [Parameter()]
+        [switch]$CopyCsv,
+
+        [Parameter()]
+        [switch]$CopyHtml,
+
+        [Parameter()]
         [switch]$PassThru
     )
 
@@ -70,6 +76,7 @@ function Set-AutopilotGroupTag {
     $updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
     if (-not $Quiet) {
         Write-Host ""
+        Write-Host ("  [TARGET:AUTOPILOT] [SCOPE:DEVICE] [ACTION:UPDATE-TAG] [GROUPTAG:{0}] [STATUS:VERIFIED]" -f $GroupTag) -ForegroundColor Cyan
         Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
         Write-Host "  | AUTOPILOT GROUP TAG UPDATE RECEIPT                       [UPDATED]   |" -ForegroundColor Green
         Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
@@ -124,6 +131,41 @@ function Set-AutopilotGroupTag {
             Set-Clipboard -Value $tsvReceipt -ErrorAction Stop
             if (-not $Quiet) {
                 Write-Host "  [CLIPBOARD] Copied GroupTag Update Receipt (TSV) to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+    if ($CopyHtml) {
+        try {
+            $htmlGroupTag = @(
+                "<div style=`"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:640px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:8px;padding:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);`">",
+                "  <div style=`"display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:12px;`">",
+                "    <h3 style=`"margin:0;color:#38bdf8;font-size:16px;font-weight:600;`">Autopilot GroupTag Update Receipt</h3>",
+                "    <span style=`"background:#166534;color:#4ade80;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;`">UPDATED</span>",
+                "  </div>",
+                "  <table style=`"width:100%;border-collapse:collapse;font-size:13px;`">",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Serial Number</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;`">$(if ($SerialNumber) { $SerialNumber } else { 'N/A' })</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Device ID</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;font-size:11px;`">$targetId</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Previous GroupTag</td><td style=`"padding:6px 0;text-align:right;color:#94a3b8;`">$(if ($prevGroupTag) { $prevGroupTag } else { '<none>' })</td></tr>",
+                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">New GroupTag</td><td style=`"padding:6px 0;text-align:right;color:#38bdf8;font-weight:600;`">$GroupTag</td></tr>",
+                "    <tr><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Updated At (UTC)</td><td style=`"padding:6px 0;text-align:right;color:#94a3b8;font-size:12px;`">$updatedUtc</td></tr>",
+                "  </table>",
+                "</div>"
+            ) -join [Environment]::NewLine
+            Set-Clipboard -Value $htmlGroupTag -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied GroupTag Update Receipt (HTML) to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+    if ($CopyCsv) {
+        try {
+            $csvGroupTag = @(
+                "DeviceId,SerialNumber,PreviousGroupTag,GroupTag,Transition,UpdatedAtUtc",
+                "`"$targetId`",`"$(if ($SerialNumber) { $SerialNumber } else { 'N/A' })`",`"$prevGroupTag`",`"$GroupTag`",`"$transitionText`",`"$updatedUtc`""
+            ) -join "`r`n"
+            Set-Clipboard -Value $csvGroupTag -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied GroupTag Update Receipt (CSV) to clipboard." -ForegroundColor Green
             }
         } catch { }
     }

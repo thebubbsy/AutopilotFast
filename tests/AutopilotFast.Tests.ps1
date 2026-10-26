@@ -584,5 +584,23 @@ Describe 'AutopilotFast Readiness & Identity UI Enhancements' {
             $cmd.Parameters.ContainsKey('CopyHtml') | Should -BeTrue
             $cmd.Parameters.ContainsKey('CopyCsv') | Should -BeTrue
         }
+
+        It 'Exposes -CopyHtml and -CopyCsv on Sync-AutopilotProfile' {
+            $cmd = Get-Command Sync-AutopilotProfile
+            $cmd.Parameters.ContainsKey('CopyHtml') | Should -BeTrue
+            $cmd.Parameters.ContainsKey('CopyCsv') | Should -BeTrue
+        }
+
+        It 'Exposes -CopyHtml and -CopyCsv on Set-AutopilotGroupTag' {
+            $cmd = Get-Command Set-AutopilotGroupTag
+            $cmd.Parameters.ContainsKey('CopyHtml') | Should -BeTrue
+            $cmd.Parameters.ContainsKey('CopyCsv') | Should -BeTrue
+        }
+
+        It 'Exposes -CopyHtml and -CopyCsv on Connect-AutopilotGraph' {
+            $cmd = Get-Command Connect-AutopilotGraph
+            $cmd.Parameters.ContainsKey('CopyHtml') | Should -BeTrue
+            $cmd.Parameters.ContainsKey('CopyCsv') | Should -BeTrue
+        }
     }
 }

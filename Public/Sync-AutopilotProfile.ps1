@@ -67,6 +67,12 @@ function Sync-AutopilotProfile {
         [switch]$CopyTsv,
 
         [Parameter()]
+        [switch]$CopyCsv,
+
+        [Parameter()]
+        [switch]$CopyHtml,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -103,6 +109,7 @@ function Sync-AutopilotProfile {
     if (-not $WaitForAssignment) {
         if (-not $Quiet) {
             Write-Host ""
+            Write-Host ("  [TENANT-SYNC:DISPATCHED] [MODE:IMMEDIATE] [TARGET:{0}] [STATUS:ACK]" -f $(if ($SerialNumber) { "SN:$SerialNumber" } elseif ($DeviceId) { "ID:$DeviceId" } else { "TENANT-WIDE" })) -ForegroundColor Cyan
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host "  | AUTOPILOT TENANT SYNC DISPATCHED                                     |" -ForegroundColor Cyan
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
@@ -151,6 +158,40 @@ function Sync-AutopilotProfile {
                 Set-Clipboard -Value $tsvSync -ErrorAction Stop
                 if (-not $Quiet) {
                     Write-Host "  [CLIPBOARD] Autopilot Tenant Sync Receipt (TSV) copied to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyHtml) {
+            try {
+                $htmlSync = @(
+                    "<div style=`"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:640px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:8px;padding:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);`">",
+                    "  <div style=`"display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:12px;`">",
+                    "    <h3 style=`"margin:0;color:#38bdf8;font-size:16px;font-weight:600;`">Autopilot Tenant Sync Receipt</h3>",
+                    "    <span style=`"background:#166534;color:#4ade80;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;`">DISPATCHED</span>",
+                    "  </div>",
+                    "  <table style=`"width:100%;border-collapse:collapse;font-size:13px;`">",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Tenant Sync</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">$(if ($TriggerTenantSync) { 'TRIGGERED (POST /windowsAutopilotSettings/sync)' } else { 'SKIPPED' })</td></tr>",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Target</td><td style=`"padding:6px 0;text-align:right;color:#38bdf8;font-family:monospace;`">$targetLabel</td></tr>",
+                    "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Mode</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;`">Immediate Return (No Polling)</td></tr>",
+                    "    <tr><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Status</td><td style=`"padding:6px 0;text-align:right;color:#4ade80;font-weight:600;`">SyncTriggered</td></tr>",
+                    "  </table>",
+                    "</div>"
+                ) -join [Environment]::NewLine
+                Set-Clipboard -Value $htmlSync -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Autopilot Tenant Sync Receipt (HTML) copied to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyCsv) {
+            try {
+                $csvSync = @(
+                    "TriggeredSync,Target,Mode,Status",
+                    "`"$([bool]$TriggerTenantSync)`",`"$targetLabel`",`"ImmediateReturn`",`"SyncTriggered`""
+                ) -join "`r`n"
+                Set-Clipboard -Value $csvSync -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Autopilot Tenant Sync Receipt (CSV) copied to clipboard." -ForegroundColor Green
                 }
             } catch { }
         }
@@ -219,6 +260,7 @@ function Sync-AutopilotProfile {
                     $assignedTime = $targetDevice.deploymentProfileAssignedDateTime
                     if (-not $Quiet) {
                         Write-Host ""
+                        Write-Host ("  [STATUS:ASSIGNED] [PROFILE:{0}] [GROUPTAG:{1}] [POLL:{2}] [LATENCY:{3}s]" -f $profileName, $(if ($targetDevice.groupTag) { $targetDevice.groupTag } else { '<none>' }), $attempt, $elapsedSec) -ForegroundColor Green
                         Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
                         Write-Host "  | AUTOPILOT PROFILE ASSIGNMENT RECEIPT                    [ASSIGNED]   |" -ForegroundColor Green
                         Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkGreen
@@ -279,6 +321,42 @@ function Sync-AutopilotProfile {
                             Set-Clipboard -Value $tsvAssigned -ErrorAction Stop
                             if (-not $Quiet) {
                                 Write-Host "  [CLIPBOARD] Autopilot Profile Assignment Receipt (TSV) copied to clipboard." -ForegroundColor Green
+                            }
+                        } catch { }
+                    }
+                    if ($CopyHtml) {
+                        try {
+                            $htmlAssigned = @(
+                                "<div style=`"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:640px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:8px;padding:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);`">",
+                                "  <div style=`"display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:12px;`">",
+                                "    <h3 style=`"margin:0;color:#38bdf8;font-size:16px;font-weight:600;`">Autopilot Profile Assignment Receipt</h3>",
+                                "    <span style=`"background:#166534;color:#4ade80;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;`">ASSIGNED</span>",
+                                "  </div>",
+                                "  <table style=`"width:100%;border-collapse:collapse;font-size:13px;`">",
+                                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Serial Number</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;`">$($targetDevice.serialNumber)</td></tr>",
+                                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Device ID</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-family:monospace;font-size:11px;`">$($targetDevice.id)</td></tr>",
+                                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Group Tag</td><td style=`"padding:6px 0;text-align:right;color:#38bdf8;`">$gtVal</td></tr>",
+                                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Profile Name</td><td style=`"padding:6px 0;text-align:right;color:#4ade80;font-weight:600;`">$profileName</td></tr>",
+                                "    <tr style=`"border-bottom:1px solid #1e293b;`"><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Assigned At</td><td style=`"padding:6px 0;text-align:right;color:#f8fafc;font-size:12px;`">$assignedTime</td></tr>",
+                                "    <tr><td style=`"padding:6px 0;color:#94a3b8;font-weight:500;`">Telemetry</td><td style=`"padding:6px 0;text-align:right;color:#94a3b8;font-size:12px;`">$attempt poll attempt(s) in ${elapsedSec}s</td></tr>",
+                                "  </table>",
+                                "</div>"
+                            ) -join [Environment]::NewLine
+                            Set-Clipboard -Value $htmlAssigned -ErrorAction Stop
+                            if (-not $Quiet) {
+                                Write-Host "  [CLIPBOARD] Autopilot Profile Assignment Receipt (HTML) copied to clipboard." -ForegroundColor Green
+                            }
+                        } catch { }
+                    }
+                    if ($CopyCsv) {
+                        try {
+                            $csvAssigned = @(
+                                "SerialNumber,DeviceId,GroupTag,ProfileName,AssignmentStatus,AssignedAt,Attempts,ElapsedSec",
+                                "`"$($targetDevice.serialNumber)`",`"$($targetDevice.id)`",`"$gtVal`",`"$profileName`",`"$assignStatus`",`"$assignedTime`",$attempt,$elapsedSec"
+                            ) -join "`r`n"
+                            Set-Clipboard -Value $csvAssigned -ErrorAction Stop
+                            if (-not $Quiet) {
+                                Write-Host "  [CLIPBOARD] Autopilot Profile Assignment Receipt (CSV) copied to clipboard." -ForegroundColor Green
                             }
                         } catch { }
                     }
