@@ -23,6 +23,9 @@ function Test-AutopilotReadiness {
         [switch]$CopyTsv,
 
         [Parameter()]
+        [switch]$CopyXml,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -143,6 +146,7 @@ function Test-AutopilotReadiness {
         $netBadge = if ($readiness.NetworkHealthy) { "[NET: $($net.StagesPassed)/$($net.TotalStages)]" } else { "[NET: $($net.StagesPassed)/$($net.TotalStages)]" }
         $osBadge  = if ($build -ge 18362) { "[OS: $build]" } else { "[OS: $build LOW]" }
         Write-Host "  Posture Badges  : $tpmBadge $sbBadge $uefiBadge $netBadge $osBadge" -ForegroundColor Cyan
+        Write-Host "  Format Feeds    : [MD: Ready] [HTML: Ready] [CSV: Ready] [JSON: Ready] [TSV: Ready] [XML: Ready]" -ForegroundColor DarkGray
         if ($readiness.IsCompliant) {
             Write-Host "  [READY] Device is 100% READY for Windows Autopilot Enrollment!`n" -ForegroundColor Green
         } else {
@@ -243,6 +247,29 @@ function Test-AutopilotReadiness {
             Set-Clipboard -Value $tsvLines -ErrorAction Stop
             if (-not $Quiet) {
                 Write-Host "  [CLIPBOARD] Copied Readiness Posture TSV rows to clipboard.`n" -ForegroundColor Cyan
+            }
+        } catch {
+            Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"
+        }
+    }
+
+    if ($CopyXml) {
+        try {
+            $xmlReport = @(
+                '<?xml version="1.0" encoding="utf-8"?>',
+                "<AutopilotReadiness isCompliant=`"$($readiness.IsCompliant.ToString().ToLowerInvariant())`" compliancePct=`"$pct`" checksPassed=`"$($readiness.ChecksPassed)`" totalChecks=`"$($readiness.TotalChecks)`">",
+                "  <Hardware>",
+                "    <Tpm ready=`"$($readiness.TpmReady.ToString().ToLowerInvariant())`" version=`"$([Security.SecurityElement]::Escape([string]$readiness.TpmVersion))`" />",
+                "    <SecureBoot enabled=`"$($readiness.SecureBootOn.ToString().ToLowerInvariant())`" uefiMode=`"$($readiness.UefiMode.ToString().ToLowerInvariant())`" />",
+                "  </Hardware>",
+                "  <Network healthy=`"$($readiness.NetworkHealthy.ToString().ToLowerInvariant())`" stagesPassed=`"$($net.StagesPassed)`" totalStages=`"$($net.TotalStages)`" />",
+                "  <OperatingSystem build=`"$build`" version=`"$([Security.SecurityElement]::Escape([string]$readiness.OsBuild))`" />",
+                "  <Timestamp>$([DateTime]::UtcNow.ToString('o'))</Timestamp>",
+                "</AutopilotReadiness>"
+            ) -join [Environment]::NewLine
+            Set-Clipboard -Value $xmlReport -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied XML Readiness Posture document (<AutopilotReadiness/>) to clipboard.`n" -ForegroundColor Cyan
             }
         } catch {
             Write-Verbose "Clipboard copy failed: $($_.Exception.Message)"

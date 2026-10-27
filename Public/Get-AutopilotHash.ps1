@@ -40,6 +40,9 @@ function Get-AutopilotHash {
         [switch]$CopyCsv,
 
         [Parameter()]
+        [switch]$CopyXml,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -374,6 +377,31 @@ function Get-AutopilotHash {
         } catch { }
     }
 
+    if ($CopyXml) {
+        try {
+            $xmlDoc = @(
+                '<?xml version="1.0" encoding="utf-8"?>',
+                "<AutopilotHardwareIdentity oa3Verified=`"$($result.OA3MagicVerified.ToString().ToLowerInvariant())`">",
+                "  <Device>",
+                "    <SerialNumber>$([Security.SecurityElement]::Escape([string]$serial))</SerialNumber>",
+                "    <SmbiosUuid>$([Security.SecurityElement]::Escape([string]$uuid))</SmbiosUuid>",
+                "    <Manufacturer>$([Security.SecurityElement]::Escape([string]$manufacturer))</Manufacturer>",
+                "    <Model>$([Security.SecurityElement]::Escape([string]$model))</Model>",
+                "    <WindowsProductID>$([Security.SecurityElement]::Escape([string]$pkid))</WindowsProductID>",
+                "    <GroupTag>$([Security.SecurityElement]::Escape([string]$GroupTag))</GroupTag>",
+                "    <IsElevated>$($isAdmin.ToString().ToLowerInvariant())</IsElevated>",
+                "  </Device>",
+                "  <HardwareHash lengthBytes=`"$($result.HashLengthBytes)`" decodedBytes=`"$decodedLen`">$([Security.SecurityElement]::Escape([string]$result.HardwareHash))</HardwareHash>",
+                "  <CapturedAt>$($result.CaptureTimestamp)</CapturedAt>",
+                "</AutopilotHardwareIdentity>"
+            ) -join [Environment]::NewLine
+            Set-Clipboard -Value $xmlDoc -ErrorAction Stop
+            if (-not $Quiet) {
+                Write-Host "  [CLIPBOARD] Copied OA3 Hardware Identity XML document (<AutopilotHardwareIdentity/>) to clipboard." -ForegroundColor Green
+            }
+        } catch { }
+    }
+
     if ($Format -eq 'Object' -and -not $Quiet) {
         $oa3Badge = if ($result.OA3MagicVerified) { "OA3\0 (0x4F413300) [VERIFIED]" } else { "UNVERIFIED ($statusMessage)" }
         $privBadge = if ($isAdmin) { "Elevated (Admin/SYSTEM)" } else { "Standard User" }
@@ -387,6 +415,7 @@ function Get-AutopilotHash {
         Write-Host ("  |  Hash Payload   : " + ("$($result.HashLengthBytes) Base64 chars ($decodedLen binary bytes)").PadRight(47).Substring(0, 47) + "|") -ForegroundColor Gray
         Write-Host ("  |  Group Tag      : " + $gtDisplay.PadRight(47).Substring(0, 47) + "|") -ForegroundColor Gray
         Write-Host ("  |  Privilege      : " + $privBadge.PadRight(47).Substring(0, 47) + "|") -ForegroundColor Gray
+        Write-Host "  |  Format Feeds   : [MD] [HTML] [CSV] [JSON] [TSV] [XML]           |" -ForegroundColor DarkGray
         Write-Host "  +------------------------------------------------------------------+" -ForegroundColor DarkCyan
     }
 

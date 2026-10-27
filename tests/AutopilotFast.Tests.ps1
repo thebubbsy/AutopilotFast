@@ -597,6 +597,27 @@ Describe 'AutopilotFast Readiness & Identity UI Enhancements' {
             $cmd.Parameters.ContainsKey('CopyCsv') | Should -BeTrue
         }
 
+        It 'Supports -CopyXml on Test-AutopilotReadiness and Get-AutopilotHash' {
+            Mock Test-StagedNetwork {
+                return [PSCustomObject]@{
+                    IsFullyReady = $true
+                    StagesPassed = 7
+                    TotalStages  = 7
+                    Details      = @()
+                }
+            } -ModuleName AutopilotFast
+
+            $res = Test-AutopilotReadiness -CopyXml -Quiet
+            $res | Should -Not -BeNullOrEmpty
+            $res.TotalChecks | Should -Be 5
+
+            $valid4k = New-AutopilotSyntheticHardwareHash -LengthBytes 4096
+            Set-AutopilotMockHardwareHash -Hash $valid4k
+            $hashRes = Get-AutopilotHash -CopyXml -Quiet
+            $hashRes | Should -Not -BeNullOrEmpty
+            $hashRes.OA3MagicVerified | Should -Be $true
+        }
+
         It 'Exposes -CopyHtml and -CopyCsv on Connect-AutopilotGraph' {
             $cmd = Get-Command Connect-AutopilotGraph
             $cmd.Parameters.ContainsKey('CopyHtml') | Should -BeTrue
