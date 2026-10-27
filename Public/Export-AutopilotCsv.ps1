@@ -57,6 +57,9 @@ function Export-AutopilotCsv {
         [switch]$CopyHtml,
 
         [Parameter()]
+        [switch]$CopyXml,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -214,6 +217,20 @@ function Export-AutopilotCsv {
             try { Set-Clipboard -Value $htmlCard -ErrorAction SilentlyContinue } catch { }
         }
 
+        if ($CopyXml) {
+            $xmlDoc = @(
+                '<?xml version="1.0" encoding="utf-8"?>',
+                "<AutopilotCsvHarvestReceipt batchCount=`"$($items.Count)`" totalRecords=`"$totalRecords`" storageMedia=`"$([Security.SecurityElement]::Escape([string]$storageMedia))`" writeMode=`"$([Security.SecurityElement]::Escape([string]$writeMode))`">",
+                "  <DestinationPath>$([Security.SecurityElement]::Escape([string]$fileItem.FullName))</DestinationPath>",
+                "  <LeadSerial>$([Security.SecurityElement]::Escape([string]$firstSerial))</LeadSerial>",
+                "  <EffectiveTag>$([Security.SecurityElement]::Escape([string]$effectiveTag))</EffectiveTag>",
+                "  <PayloadSizeKb>$sizeKb</PayloadSizeKb>",
+                "  <HarvestedAt>$([DateTime]::UtcNow.ToString('o'))</HarvestedAt>",
+                "</AutopilotCsvHarvestReceipt>"
+            ) -join [Environment]::NewLine
+            try { Set-Clipboard -Value $xmlDoc -ErrorAction SilentlyContinue } catch { }
+        }
+
         if (-not $Quiet) {
             $mediaBadge = if ($storageMedia -match 'USB') { '[MEDIA:USB]' } else { '[MEDIA:LOCAL]' }
             $modeBadge = if ($Append -and $fileExists) { '[MODE:APPEND]' } else { '[MODE:CREATE]' }
@@ -228,6 +245,7 @@ function Export-AutopilotCsv {
             Write-Host ("  | Storage     : {0,-24} Mode  : {1,-21} |" -f $storageMedia, $writeMode) -ForegroundColor Gray
             Write-Host ("  | Batch Count : {0,-24} Total : {1,-21} |" -f "$($items.Count) device(s)", "$totalRecords row(s) ($sizeKb KB)") -ForegroundColor Green
             Write-Host ("  | Lead Serial : {0,-24} Tag   : {1,-21} |" -f $firstSerial, $effectiveTag) -ForegroundColor Gray
+            Write-Host "  | Format Feeds: [MD] [HTML] [CSV] [JSON] [TSV] [XML]                   |" -ForegroundColor DarkGray
             if ($CopyPath) {
                 Write-Host "  | [CLIPBOARD] Full CSV file path copied to system clipboard.           |" -ForegroundColor Green
             }
@@ -245,6 +263,9 @@ function Export-AutopilotCsv {
             }
             if ($CopyHtml) {
                 Write-Host "  | [CLIPBOARD] HTML harvest receipt card copied to clipboard.           |" -ForegroundColor Green
+            }
+            if ($CopyXml) {
+                Write-Host "  | [CLIPBOARD] XML harvest receipt document copied to clipboard.        |" -ForegroundColor Green
             }
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
         }

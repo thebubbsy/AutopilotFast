@@ -57,6 +57,9 @@ function Register-AutopilotDevice {
         [switch]$CopyCsv,
 
         [Parameter()]
+        [switch]$CopyXml,
+
+        [Parameter()]
         [switch]$Quiet
     )
 
@@ -192,6 +195,7 @@ function Register-AutopilotDevice {
             Write-Host ("  | Assigned User : {0,-52} |" -f $usrDisplay) -ForegroundColor Gray
             Write-Host ("  | OA3 Payload   : {0,-52} |" -f "$hashLen Base64 chars (OA3 Verified)") -ForegroundColor Green
             Write-Host ("  | Sync Mode     : {0,-52} |" -f $syncDisplay) -ForegroundColor Gray
+            Write-Host "  | Format Feeds  : [MD] [HTML] [CSV] [JSON] [TSV] [XML]                    |" -ForegroundColor DarkGray
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host ""
         }
@@ -265,6 +269,30 @@ function Register-AutopilotDevice {
                 Set-Clipboard -Value $htmlCard -ErrorAction Stop
                 if (-not $Quiet) {
                     Write-Host "  [CLIPBOARD] Copied HTML Cloud Registration Receipt to clipboard." -ForegroundColor Green
+                }
+            } catch { }
+        }
+        if ($CopyXml) {
+            try {
+                $gtText = if ($GroupTag) { $GroupTag } else { '(None)' }
+                $usrText = if ($AssignedUser) { $AssignedUser } else { '(Unassigned)' }
+                $xmlDoc = @(
+                    '<?xml version="1.0" encoding="utf-8"?>',
+                    "<AutopilotCloudRegistrationReceipt status=`"QUEUED`" stage=`"INGESTION`">",
+                    "  <Device>",
+                    "    <SerialNumber>$([Security.SecurityElement]::Escape([string]$deviceInfo.SerialNumber))</SerialNumber>",
+                    "    <ImportQueueId>$([Security.SecurityElement]::Escape([string]$importId))</ImportQueueId>",
+                    "    <GroupTag>$([Security.SecurityElement]::Escape([string]$gtText))</GroupTag>",
+                    "    <AssignedUser>$([Security.SecurityElement]::Escape([string]$usrText))</AssignedUser>",
+                    "    <Oa3HashLength>$hashLen</Oa3HashLength>",
+                    "    <SyncMode>$([Security.SecurityElement]::Escape([string]$syncDisplay))</SyncMode>",
+                    "  </Device>",
+                    "  <UploadedAtUtc>$uploadedAtUtc</UploadedAtUtc>",
+                    "</AutopilotCloudRegistrationReceipt>"
+                ) -join [Environment]::NewLine
+                Set-Clipboard -Value $xmlDoc -ErrorAction Stop
+                if (-not $Quiet) {
+                    Write-Host "  [CLIPBOARD] Copied XML Cloud Registration Receipt document (<AutopilotCloudRegistrationReceipt/>) to clipboard." -ForegroundColor Green
                 }
             } catch { }
         }

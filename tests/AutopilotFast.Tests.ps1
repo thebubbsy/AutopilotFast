@@ -623,5 +623,21 @@ Describe 'AutopilotFast Readiness & Identity UI Enhancements' {
             $cmd.Parameters.ContainsKey('CopyHtml') | Should -BeTrue
             $cmd.Parameters.ContainsKey('CopyCsv') | Should -BeTrue
         }
+
+        It 'Supports -CopyXml on Export-AutopilotCsv and Register-AutopilotDevice' {
+            $cmd = Get-Command Register-AutopilotDevice
+            $cmd.Parameters.ContainsKey('CopyXml') | Should -BeTrue
+
+            $valid4k = New-AutopilotSyntheticHardwareHash -LengthBytes 4096
+            Set-AutopilotMockHardwareHash -Hash $valid4k
+            $tempCsv = Join-Path ([System.IO.Path]::GetTempPath()) "AutoXmlTest_$([System.Guid]::NewGuid()).csv"
+            try {
+                $file = Export-AutopilotCsv -Path $tempCsv -GroupTag 'TEST-XML' -CopyXml -Quiet
+                $file | Should -Not -BeNullOrEmpty
+                Test-Path $tempCsv | Should -BeTrue
+            } finally {
+                if (Test-Path $tempCsv) { Remove-Item $tempCsv -Force -ErrorAction SilentlyContinue }
+            }
+        }
     }
 }
